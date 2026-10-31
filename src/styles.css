@@ -1,0 +1,269 @@
+/* Passage Index pane */
+/* No top padding (themes vary it), so the sticky header sits flush at the top. */
+.workspace-leaf-content .view-content.passage-index { padding: 0 10px 8px; font-size: var(--font-ui-small); }
+
+/* The header (title, main passage, tools) stays put while the list scrolls under it. */
+.passage-index .pi-head {
+  position: sticky; top: 0; z-index: 2;
+  margin: 0 -10px 10px; padding: 8px 10px 6px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.passage-index .pi-title { font-weight: var(--font-semibold); font-size: var(--font-ui-medium); }
+.passage-index .pi-sub { color: var(--text-muted); }
+.passage-index .pi-empty,
+.passage-index .pi-none { color: var(--text-faint); padding: 6px 2px; }
+.passage-index .pi-broad { cursor: pointer; font-size: var(--font-ui-smaller); }
+.passage-index .pi-broad:hover { color: var(--text-muted); }
+
+.passage-index .pi-group { border-top: 1px solid var(--background-modifier-border); padding: 4px 0; }
+.passage-index .pi-group > summary {
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; padding: 3px 2px; border-radius: var(--radius-s);
+}
+.passage-index .pi-group > summary:hover { background: var(--background-modifier-hover); }
+.passage-index .pi-group > summary { list-style: none; }
+.passage-index .pi-group > summary::-webkit-details-marker { display: none; }
+.passage-index .pi-chevron { display: inline-flex; color: var(--text-faint); margin-right: 4px; transition: transform 0.12s ease; }
+.passage-index .pi-chevron svg { width: 14px; height: 14px; }
+.passage-index .pi-group[open] > summary .pi-chevron { transform: rotate(90deg); }
+.passage-index .pi-passage { flex: 0 1 auto; margin-right: auto; }
+.passage-index .pi-passage.is-jump { cursor: pointer; }
+.passage-index .pi-passage.is-jump:hover { text-decoration: underline; }
+
+.passage-index .pi-title-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.passage-index .pi-tools { display: flex; gap: 2px; flex-shrink: 0; }
+.passage-index .pi-group.is-main > summary .pi-passage { font-weight: var(--font-bold); color: var(--text-accent); }
+.passage-index .pi-group.is-empty > summary { color: var(--text-faint); }
+
+/* Sections (Group passages by section): a heading row, its passages indented under it. */
+.passage-index .pi-section { border-top: 1px solid var(--background-modifier-border); padding: 4px 0; }
+.passage-index .pi-section > summary {
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; padding: 3px 2px; border-radius: var(--radius-s); list-style: none;
+}
+.passage-index .pi-section > summary::-webkit-details-marker { display: none; }
+.passage-index .pi-section > summary:hover { background: var(--background-modifier-hover); }
+.passage-index .pi-section[open] > summary .pi-chevron { transform: rotate(90deg); }
+.passage-index .pi-section-title { margin-right: auto; font-weight: var(--font-semibold); }
+.passage-index .pi-section-range { font-weight: normal; color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.passage-index .pi-section-list { padding-left: 14px; }
+.passage-index .pi-section-list > .pi-group:first-child { border-top: none; }
+.passage-index .pi-count {
+  font-size: var(--font-ui-smaller); color: var(--text-muted);
+  background: var(--background-modifier-border); border-radius: 8px; padding: 0 6px;
+}
+
+.passage-index .pi-list { padding: 2px 0 4px 8px; }
+.passage-index .pi-item { padding: 4px 6px; border-radius: var(--radius-s); cursor: pointer; }
+.passage-index .pi-item:hover { background: var(--background-modifier-hover); }
+.passage-index .pi-item.is-about { border-left: 2px solid var(--interactive-accent); }
+.passage-index .pi-item-top { display: flex; justify-content: space-between; gap: 6px; }
+.passage-index .pi-name { font-weight: var(--font-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.passage-index .pi-meta { display: flex; gap: 4px; flex-shrink: 0; align-items: center; }
+.passage-index .pi-tag { font-size: var(--font-ui-smaller); padding: 0 5px; border-radius: 6px; background: var(--background-modifier-border); color: var(--text-muted); }
+.passage-index .pi-about { background: var(--interactive-accent); color: var(--text-on-accent); }
+.passage-index .pi-chapter { opacity: 0.7; }
+.passage-index .pi-folder { font-size: var(--font-ui-smaller); color: var(--text-faint); }
+.passage-index .pi-line { color: var(--text-muted); font-size: var(--font-ui-smaller); margin-top: 2px; line-height: 1.35; }
+.passage-index .pi-line mark { background: var(--text-highlight-bg); color: var(--text-normal); border-radius: 2px; }
+.passage-index .pi-faint, .passage-index .pi-more { color: var(--text-faint); }
+.passage-index .pi-foot { margin-top: 12px; color: var(--text-faint); font-size: var(--font-ui-smaller); }
+
+/* Intertext Register */
+.passage-index .pi-intertexts > summary .pi-passage { font-weight: var(--font-semibold); }
+.passage-index .pi-it-head { font-size: var(--font-ui-smaller); color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin: 6px 0 2px 2px; }
+.passage-index .pi-rel-quotes { background: var(--interactive-accent); color: var(--text-on-accent); }
+.passage-index .pi-rel-unspecified { opacity: 0.6; font-style: italic; }
+.passage-index .pi-open { opacity: 0.7; }
+.passage-index .pi-it-task { color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.35; }
+.passage-index .pi-it-task mark { background: var(--text-highlight-bg); color: var(--text-normal); border-radius: 2px; }
+
+/* Temporary highlight of the reference after opening a result */
+.pi-flash {
+  background-color: var(--text-highlight-bg);
+  outline: 2px solid var(--interactive-accent);
+  border-radius: 2px;
+  animation: pi-flash-pulse 0.9s ease-in-out 2;
+}
+@keyframes pi-flash-pulse {
+  50% { outline-color: transparent; }
+}
+
+/* Verse pop-up (Ctrl + hover a passage label). A plain default; the theme restyles it. */
+.pi-verse-popup {
+  position: fixed; z-index: var(--layer-popover);
+  left: var(--pi-pop-left, 0); top: var(--pi-pop-top, 0); /* set by the plugin */
+  width: max-content; max-width: min(380px, 90vw); max-height: 50vh; overflow-y: auto;
+  padding: 8px 12px 10px;
+  background: var(--background-primary); color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small); line-height: 1.5;
+}
+.pi-verse-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+.pi-verse-ref { font-weight: var(--font-semibold); white-space: nowrap; }
+/* Translation tabs: the current one highlighted, the others one click away. */
+.pi-verse-trs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+.pi-verse-tr {
+  display: inline-flex; align-items: center;
+  font-size: var(--font-ui-smaller); color: var(--text-muted); letter-spacing: 0.03em;
+  padding: 1px 6px; border-radius: var(--radius-s); cursor: pointer;
+}
+.pi-verse-tr:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.pi-verse-tr.is-active { color: var(--text-normal); background: var(--background-modifier-border); font-weight: var(--font-semibold); cursor: default; }
+/* "Open in…" button beside the reference. */
+.pi-verse-openin { display: inline-flex; vertical-align: middle; margin-left: 6px; padding: 2px; border-radius: var(--radius-s); color: var(--text-faint); cursor: pointer; }
+.pi-verse-openin:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.pi-verse-openin svg { width: 12px; height: 12px; }
+.pi-verse-add { color: var(--text-faint); padding: 1px 3px; }
+.pi-verse-add svg { width: 12px; height: 12px; }
+.pi-verse-download { display: block; margin-top: 6px; font-style: normal; }
+.pi-verse-num { font-size: 0.7em; color: var(--text-faint); margin-right: 2px; }
+.pi-verse-text.is-poetry .pi-verse { display: block; margin-bottom: 4px; }
+.pi-verse-note, .pi-verse-missing, .pi-verse-more { color: var(--text-faint); font-style: italic; }
+.pi-verse-more { margin-top: 4px; }
+/* No tooltip on top of the pop-up (only while it is open; plain hover keeps its tooltip). */
+body.pi-verse-open .tooltip { display: none; }
+
+/* Settings tabs */
+.pi-settings-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 12px; padding-bottom: 6px;
+}
+.pi-settings-tabs .pi-settings-tab {
+  background: transparent; box-shadow: none; border: none;
+  color: var(--text-muted); font-size: var(--font-ui-small);
+  padding: 4px 12px; border-radius: var(--radius-s); cursor: pointer;
+}
+.pi-settings-tabs .pi-settings-tab:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.pi-settings-tabs .pi-settings-tab.is-active { color: var(--text-normal); background: var(--background-modifier-border); font-weight: var(--font-semibold); }
+
+/* Bible wizard */
+.pi-wizard .pi-wizard-steps { display: flex; gap: 14px; margin-bottom: 12px; font-size: var(--font-ui-small); color: var(--text-faint); }
+.pi-wizard .pi-wizard-step.is-active { color: var(--text-normal); font-weight: var(--font-semibold); }
+.pi-wizard .pi-wizard-step.is-done { color: var(--text-muted); }
+.pi-wizard .pi-wizard-example { margin: 8px 0; padding: 6px 10px; border-radius: var(--radius-s); background: var(--background-secondary); font-family: var(--font-monospace); font-size: var(--font-ui-smaller); }
+.pi-wizard .pi-wizard-note { margin: 4px 0 8px; }
+.pi-wizard .pi-wizard-warning { margin: 8px 0; padding: 6px 10px; border-left: 3px solid var(--text-warning); background: var(--background-secondary); font-size: var(--font-ui-small); }
+.pi-wizard .pi-wizard-warning ul { margin: 4px 0; }
+.pi-wizard .pi-wizard-progress progress { width: 100%; }
+.pi-wizard .pi-wizard-footer { border-top: none; }
+.pi-settings-empty { padding: 6px 0; }
+
+/* Verse numbers in wizard chapter notes (cssclasses: bible-chapter). The notes keep
+   "###### 12" headings so verse links work; this only changes how they look: one verse per
+   line, with a small number. Settings → Bible → Verse numbers sets body.pi-verses-margin or
+   body.pi-verses-inline. A theme can restyle .pi-vnum and these classes. */
+
+/* --- Live Preview: PI hides the "###### 12" line and draws .pi-vnum itself --- */
+body .markdown-source-view.mod-cm6 .cm-content > .cm-line.pi-verse-head {
+  height: 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+  border: none !important; background: none !important; box-shadow: none !important;
+  overflow: hidden !important; font-size: 0 !important; line-height: 0 !important;
+}
+body .markdown-source-view.mod-cm6 .cm-content > .cm-line.pi-verse-head::before,
+body .markdown-source-view.mod-cm6 .cm-content > .cm-line.pi-verse-head::after { content: none !important; display: none !important; }
+.pi-vnum {
+  font-family: var(--font-text); font-variant-numeric: tabular-nums; font-style: normal;
+  font-size: 0.72em; user-select: none; pointer-events: none;
+}
+/* In the margin: hangs left of the verse, right-aligned, without moving the text. */
+body.pi-verses-margin .pi-vnum {
+  display: inline-block; width: 2.2em; margin-inline-start: -2.9em; margin-inline-end: 0.7em;
+  text-align: end; color: var(--text-faint);
+}
+/* At the start of the verse: a small raised number before the first word. */
+body.pi-verses-inline .pi-vnum {
+  vertical-align: 0.35em; margin-inline-end: 0.3em;
+  font-weight: var(--font-semibold); color: var(--text-muted);
+}
+
+/* --- Reading view: the heading takes no space; the number sits by the verse --- */
+body.pi-verses-margin .markdown-preview-view.bible-chapter .el-h6 h6,
+body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 {
+  margin: 0 !important; padding: 0 !important; border: none !important; background: none !important; box-shadow: none !important;
+  font-family: var(--font-text); font-variant-numeric: tabular-nums; letter-spacing: normal; text-transform: none;
+  white-space: nowrap; display: block; width: auto; min-width: 0; max-width: none;
+  font-size: 0.72em; line-height: calc(var(--line-height-normal) / 0.72);
+}
+body.pi-verses-margin .bible-chapter .el-h6 h6::before, body.pi-verses-margin .bible-chapter .el-h6 h6::after,
+body.pi-verses-inline .bible-chapter .el-h6 h6::before, body.pi-verses-inline .bible-chapter .el-h6 h6::after { content: none; display: none; }
+body.pi-verses-margin .bible-chapter .el-h6 .heading-collapse-indicator,
+body.pi-verses-inline .bible-chapter .el-h6 .heading-collapse-indicator { display: none; }
+/* Verses stack with no gap between them. */
+body.pi-verses-margin .markdown-preview-view.bible-chapter .el-h6 + .el-p > p,
+body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 + .el-p > p { margin-block: 0; }
+
+body.pi-verses-margin .markdown-preview-view.bible-chapter .el-h6 { position: relative; height: 0; margin: 0; padding: 0; }
+body.pi-verses-margin .markdown-preview-view.bible-chapter .el-h6 h6 {
+  position: absolute; top: 0; right: 100%; margin-right: 0.7em !important;
+  font-weight: var(--font-normal); color: var(--text-faint); text-align: right;
+}
+body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 { float: left; margin: 0 0.3em 0 0; padding: 0; }
+body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weight: var(--font-semibold); color: var(--text-muted); }
+
+
+/* Topics */
+.passage-index .pi-topics > summary .pi-passage { font-weight: var(--font-semibold); }
+.passage-index .pi-topics.is-empty > summary { color: var(--text-faint); }
+.passage-index .pi-topic { background: var(--color-purple, var(--interactive-accent)); color: var(--text-on-accent); opacity: 0.85; }
+.passage-index .pi-topic-row.is-linked { opacity: 0.6; }
+.passage-index .pi-linked { font-style: italic; }
+.passage-index .pi-via { color: var(--text-muted); font-size: var(--font-ui-smaller); margin-top: 1px; }
+.passage-index .pi-via-ref { color: var(--text-normal); }
+.passage-index .pi-via-ref.is-main { color: var(--text-accent); font-weight: var(--font-semibold); }
+
+/* Footnote markers in Bible chapters do not push their line apart. */
+.markdown-preview-view.bible-chapter sup { line-height: 0; }
+.markdown-source-view.bible-chapter .cm-footref { vertical-align: baseline; position: relative; top: -0.4em; font-size: 0.75em; line-height: 1; }
+
+/* Poetry indents in wizard Bible notes: <span class="pi-indent"></span> at the start of a line. */
+.pi-indent { display: inline-block; width: 1.5em; }
+
+/* Index | Map tabs in the sticky header. */
+.passage-index .pi-tabs { display: flex; gap: 2px; margin-top: 6px; }
+.passage-index .pi-tab {
+  padding: 2px 10px; border-radius: var(--radius-s); cursor: pointer; color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.passage-index .pi-tab:hover { background: var(--background-modifier-hover); }
+.passage-index .pi-tab.is-active { background: var(--background-modifier-active-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
+
+/* Coverage map (pane Map tab and pi-map code blocks). Shade = mentions: 0 / 1 / 2–3 / 4+. */
+.passage-index .pi-map-nav { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.passage-index .pi-map-book {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  font-weight: var(--font-semibold); padding: 2px 6px; border-radius: var(--radius-s);
+}
+.passage-index .pi-map-book:hover, .passage-index .pi-map-book.is-open { background: var(--background-modifier-hover); }
+.passage-index .pi-map-caret svg { width: 14px; height: 14px; color: var(--text-faint); }
+.passage-index .pi-map-sum { color: var(--text-muted); font-size: var(--font-ui-smaller); margin-bottom: 6px; }
+.passage-index .pi-map-label { color: var(--text-muted); font-size: var(--font-ui-smaller); margin: 10px 0 4px; font-weight: var(--font-semibold); }
+.passage-index .pi-map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 3px; }
+.passage-index .pi-map-books { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 3px; }
+.passage-index .pi-map-sq, .passage-index .pi-map-bk {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  height: 26px; border-radius: 3px; cursor: pointer; font-size: 11px;
+  border: 1px solid var(--background-modifier-border); color: var(--text-muted);
+}
+.passage-index .pi-map-bk { font-size: var(--font-ui-smaller); }
+.passage-index .pi-map-sq:hover, .passage-index .pi-map-bk:hover { border-color: var(--text-muted); }
+.passage-index .pi-lv0 { background: transparent; }
+.passage-index .pi-lv1 { background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.2); color: var(--text-normal); }
+.passage-index .pi-lv2 { background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.45); color: var(--text-normal); }
+.passage-index .pi-lv3 { background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.8); color: var(--text-on-accent); }
+.passage-index .pi-map-sq.is-mine, .passage-index .pi-map-swatch.is-mine,
+.passage-index .pi-map-bk.is-current { outline: 2px solid var(--text-accent); outline-offset: 1px; }
+.passage-index .pi-map-sq.is-selected { outline: 2px solid var(--text-normal); outline-offset: 1px; }
+.passage-index .pi-map-dot {
+  position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--text-normal);
+}
+.passage-index .pi-map-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.passage-index .pi-map-key { display: inline-flex; align-items: center; gap: 4px; }
+.passage-index .pi-map-swatch { position: relative; display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--background-modifier-border); }
+.passage-index .pi-map-swatch .pi-map-dot { top: 1px; right: 1px; width: 4px; height: 4px; }
+/* In a note, the block sits in the text column. */
+.pi-map-block { padding: 8px 10px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); font-size: var(--font-ui-small); }

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+bibles/
+*.bak*/
+.DS_Store
