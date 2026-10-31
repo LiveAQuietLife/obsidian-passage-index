@@ -1785,7 +1785,7 @@ class PassageIndexSettings extends PluginSettingTab {
   displayPane(el) {
     const sec = new Setting(el)
       .setName("Group passages by section (pericopes)")
-      .setDesc("Each translation divides the text into its own sections (pericopes), each with a heading such as \"The Triumphal Entry\". Turn this on to group the pane's passages under those headings. Only three translations offer their headings for free use: BSB, LEB and TCENT (New Testament only). You can pick any of them, whatever translation you read. The one you pick must be downloaded first, in the Verse pop-up tab; you don't have to use it in the pop-up.");
+      .setDesc("Each translation divides the text into its own sections (pericopes), each with a heading such as \"The Triumphal Entry\". Turn this on to group the pane's passages under those headings. Only three translations offer their headings for free use: BSB, LEB and TCENT (New Testament only). You can pick any of them, whatever translation you read. The one you pick must be downloaded first, in the Verse pop-up tab; you don't have to use it in the pop-up. A heading appears only when two or more passages fall in the same section; a passage alone in its section shows the heading when you point at it.");
     sec.addDropdown(async (d) => {
       const s = this.plugin.settings;
       d.addOption("", "Off");
