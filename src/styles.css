@@ -267,3 +267,6 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 .passage-index .pi-map-swatch .pi-map-dot { top: 1px; right: 1px; width: 4px; height: 4px; }
 /* In a note, the block sits in the text column. */
 .pi-map-block { padding: 8px 10px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); font-size: var(--font-ui-small); }
+
+/* Usage tags (pop-up, sections) in the Translations tab. */
+.setting-item-name .pi-tag { margin-left: 6px; font-size: var(--font-ui-smaller); padding: 0 5px; border-radius: 6px; background: var(--background-modifier-border); color: var(--text-muted); }

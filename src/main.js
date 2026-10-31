@@ -1700,7 +1700,7 @@ class PassageIndexSettings extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; this.tab = "index"; }
 
   // Tabs across the top; each draws its own section. The open tab is remembered while
-  // Obsidian runs (the pop-up's "+" opens the Verse pop-up tab).
+  // Obsidian runs (the pop-up's "+" opens the Translations tab).
   display() {
     const { containerEl } = this;
     containerEl.empty();
@@ -1708,7 +1708,7 @@ class PassageIndexSettings extends PluginSettingTab {
       ["index", "Index", (el) => this.displayIndex(el)],
       ["topics", "Topics", (el) => this.displayTopics(el)],
       ["pane", "Pane", (el) => this.displayPane(el)],
-      ["verse", "Verse pop-up", (el) => this.displayVerse(el)],
+      ["verse", "Translations", (el) => this.displayVerse(el)],
       ["openin", "Open in", (el) => this.displayOpenIn(el)],
       ["bible", "Bible", (el) => this.displayBible(el)],
     ];
@@ -1785,7 +1785,7 @@ class PassageIndexSettings extends PluginSettingTab {
   displayPane(el) {
     const sec = new Setting(el)
       .setName("Group passages by section (pericopes)")
-      .setDesc("Each translation divides the text into its own sections (pericopes), each with a heading such as \"The Triumphal Entry\". Turn this on to group the pane's passages under those headings. Only three translations offer their headings for free use: BSB, LEB and TCENT (New Testament only). You can pick any of them, whatever translation you read. The one you pick must be downloaded first, in the Verse pop-up tab; you don't have to use it in the pop-up. A heading appears only when two or more passages fall in the same section; a passage alone in its section shows the heading when you point at it.");
+      .setDesc("Each translation divides the text into its own sections (pericopes), each with a heading such as \"The Triumphal Entry\". Turn this on to group the pane's passages under those headings. Only three translations offer their headings for free use: BSB, LEB and TCENT (New Testament only). You can pick any of them, whatever translation you read. The one you pick must be downloaded first, in the Translations tab; you don't have to use it in the pop-up. A heading appears only when two or more passages fall in the same section; a passage alone in its section shows the heading when you point at it.");
     sec.addDropdown(async (d) => {
       const s = this.plugin.settings;
       d.addOption("", "Off");
@@ -1934,7 +1934,7 @@ class PassageIndexSettings extends PluginSettingTab {
       });
   }
 
-  // Verse pop-up: on/off, closing, translation, and downloads. Drawn in its own container so
+  // Translations tab: pop-up on/off, closing, translation, and downloads. Drawn in its own container so
   // it can redraw itself (after a download or delete) without redrawing the whole tab.
   // "Open in…": which outside tools appear when you right-click a passage heading or use the
   // pop-up's button, and an optional version for each.
@@ -1973,13 +1973,13 @@ class PassageIndexSettings extends PluginSettingTab {
     const known = TRANSLATIONS.some((t) => t.id === s.bibleTranslation);
     // These copies and the wizard's Bible notes are different things; say so.
     el.createDiv({ cls: "setting-item-description pi-settings-intro",
-      text: "Translations here are small hidden copies used only by the pop-up (kept in the plugin folder, not as notes). To put a whole Bible into your vault as notes, use the Bible tab." });
+      text: "These are small hidden copies of translations, used by the verse pop-up and by the pane's sections. They're kept in the plugin folder, not as notes. To put a whole Bible into your vault as notes, use the Bible tab." });
     const info = translationInfo(s.bibleTranslation);
 
     // Translation: grouped list, "✓" marks downloaded ones; "Other" takes any API id.
     new Setting(el)
       .setName("Pop-up translation")
-      .setDesc("The translation the verse pop-up shows. Pick one from the list to download it; the ones you already have are marked ✓ and listed below. In the pop-up itself, its tabs switch between them.")
+      .setDesc("The translation the pop-up opens with. Picking one you don't have yet offers to download it. Ones you already have are marked ✓.")
       .addDropdown((d) => {
         fillTranslationSelect(d.selectEl, has, s.bibleTranslation);
         d.onChange(async (v) => {
@@ -2003,44 +2003,75 @@ class PassageIndexSettings extends PluginSettingTab {
         }));
     }
 
-    // The chosen translation: license and status. Download only when it isn't there yet;
-    // once downloaded, a small refresh icon (rarely needed) and Delete.
+    // The chosen translation, when not downloaded yet: license and Download.
     const id = s.bibleTranslation;
-    if (id) {
-      const status = new Setting(el)
-        .setName(has(id) ? `${info.short}: ready for the pop-up` : `${info.short}: not downloaded`)
+    if (id && !has(id)) {
+      new Setting(el)
+        .setName(`${info.short}: not downloaded`)
         .setDesc(createFragment((f) => {
           f.appendText(LICENSES[info.license] + " ");
           if (info.url) f.createEl("a", { text: "Terms", href: info.url });
-          if (!has(id)) {
-            f.createEl("br");
-            f.appendText("Downloads from bible.helloao.org (about 4–9 MB). Passage Index goes online only when you click Download.");
-          }
-        }));
-      if (!has(id)) {
-        status.addButton((b) => b.setButtonText("Download").setCta().onClick(async () => {
+          f.createEl("br");
+          f.appendText("Downloads from bible.helloao.org (about 4–9 MB). Passage Index goes online only when you click Download.");
+        }))
+        .addButton((b) => b.setButtonText("Download").setCta().onClick(async () => {
           b.setDisabled(true).setButtonText("Downloading…");
           await this.plugin.downloadBible(id);
           this.displayVerse(el);
         }));
-      } else {
-        status.addExtraButton((b) => b.setIcon("refresh-cw").setTooltip(`Download a fresh copy of the ${info.short} (only needed if the source is updated)`)
-          .onClick(async () => { b.setDisabled(true); await this.plugin.downloadBible(id); this.displayVerse(el); }));
-        status.addExtraButton((b) => b.setIcon("trash").setTooltip(`Delete the ${info.short}`)
-          .onClick(async () => { await this.plugin.deleteBible(id); this.displayVerse(el); }));
-      }
     }
 
-    // The other downloaded translations, one row each with Delete.
-    for (const d of downloaded.filter((x) => x !== id)) {
+    // Every downloaded translation, one line each: what it's used for, its license, refresh, delete.
+    new Setting(el).setName("Downloaded translations").setHeading();
+    if (!downloaded.length) {
+      el.createDiv({ cls: "setting-item-description pi-settings-empty", text: "None yet." });
+      return;
+    }
+    el.createDiv({ cls: "setting-item-description pi-settings-intro",
+      text: "Switch between these with the tabs in the pop-up. Deleting one used for sections turns sections off until you pick another in the Pane tab." });
+    for (const d of downloaded) {
       const t = translationInfo(d);
-      new Setting(el).setName(`${t.short}: ready for the pop-up`).setDesc(`${t.name}. Switch to it with the tabs in the pop-up, or the list above.`)
-        .addExtraButton((b) => b.setIcon("refresh-cw").setTooltip(`Download a fresh copy of the ${t.short}`)
-          .onClick(async () => { b.setDisabled(true); await this.plugin.downloadBible(d); this.displayVerse(el); }))
-        .addExtraButton((b) => b.setIcon("trash").setTooltip(`Delete the ${t.short}`)
-          .onClick(async () => { await this.plugin.deleteBible(d); this.displayVerse(el); }));
+      const forPopup = d === id, forSections = d === s.sectionsFrom;
+      const row = new Setting(el)
+        .setName(createFragment((f) => {
+          f.appendText(`${t.short} · ${t.name}`);
+          if (forPopup) f.createSpan({ cls: "pi-tag", text: "pop-up" });
+          if (forSections) f.createSpan({ cls: "pi-tag", text: "sections" });
+        }))
+        .setDesc(createFragment((f) => {
+          f.appendText((LICENSES[t.license] || "") + " ");
+          if (t.url) f.createEl("a", { text: "Terms", href: t.url });
+        }));
+      row.addExtraButton((b) => b.setIcon("refresh-cw").setTooltip(`Download a fresh copy of the ${t.short} (only needed if the source is updated)`)
+        .onClick(async () => { b.setDisabled(true); await this.plugin.downloadBible(d); this.displayVerse(el); }));
+      row.addExtraButton((b) => b.setIcon("trash").setTooltip(`Delete the ${t.short}`)
+        .onClick(async () => {
+          const go = async () => {
+            if (forSections) { s.sectionsFrom = ""; await save(); }
+            await this.plugin.deleteBible(d);
+            this.plugin.refreshViews();
+            this.displayVerse(el);
+          };
+          if (forSections) new ConfirmModal(this.app, `Delete the ${t.short}?`,
+            `The pane's sections use the ${t.short}. Deleting it turns sections off until you pick another translation in the Pane tab.`,
+            `Delete ${t.short}`, go).open();
+          else await go();
+        }));
     }
   }
+}
+
+// A small yes/no dialog.
+class ConfirmModal extends Modal {
+  constructor(app, title, text, yes, onYes) { super(app); this.t = title; this.x = text; this.yes = yes; this.onYes = onYes; }
+  onOpen() {
+    this.titleEl.setText(this.t);
+    this.contentEl.createEl("p", { text: this.x });
+    new Setting(this.contentEl)
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) => b.setButtonText(this.yes).setWarning().onClick(async () => { this.close(); await this.onYes(); }));
+  }
+  onClose() { this.contentEl.empty(); }
 }
 
 module.exports = PassageIndexPlugin;
