@@ -1037,7 +1037,13 @@ class PassagePane extends ItemView {
       for (const b of buckets) {
         if (!b.s || b.groups.length < 2) {
           for (const g of b.groups) renderGroup(el, g);
-          if (b.s) el.lastElementChild?.querySelector(".pi-passage")?.setAttr("title", b.s.title);
+          if (b.s) {
+            // One tooltip (Obsidian's): section name on top of any "Show in this note" text.
+            const lab = el.lastElementChild?.querySelector(".pi-passage");
+            const was = lab?.getAttr("aria-label");
+            lab?.setAttr("aria-label", was ? `Section: ${b.s.title}
+${was}` : `Section: ${b.s.title}`);
+          }
           continue;
         }
         const s = b.s;
