@@ -1840,12 +1840,12 @@ class PassageIndexSettings extends PluginSettingTab {
     el.empty();
     const redraw = () => this.displayBible(el);
     new Setting(el)
-      .setName("Bring in the Bible")
-      .setDesc("Optional. Writes a whole translation into your vault as notes: one per chapter, each verse a small heading you can link to ([[Revelation 1#12]]). The format works with the Bible Linker and Local Bible Ref plugins.")
+      .setName("Add a Bible to your vault")
+      .setDesc("Optional. Writes a whole translation into your vault as notes: one note per chapter, with each verse a small heading you can link to, e.g. [[Revelation 1#12]]. The notes work with the Bible Linker and Local Bible Ref plugins. This is separate from the hidden copies in the Translations tab.")
       .addButton((b) => b.setButtonText("Open the wizard…").setCta().onClick(() => new BibleWizard(this.app, this.plugin, redraw).open()));
     new Setting(el)
       .setName("Verse numbers")
-      .setDesc("How verse numbers look in Bible chapter notes. Links like [[Genesis 1#3]] work with every choice. \"As headings\" leaves them to your theme.")
+      .setDesc("How verse numbers look in your Bible's chapter notes. Links like [[Genesis 1#3]] work with every choice. \"As headings\" leaves the look to your theme.")
       .addDropdown((d) => d
         .addOption("margin", "In the margin")
         .addOption("inline", "At verse start")
@@ -1855,7 +1855,7 @@ class PassageIndexSettings extends PluginSettingTab {
           this.plugin.verseExt.length = 0; this.plugin.verseExt.push(verseNumberExtension(this.plugin)); this.app.workspace.updateOptions(); }));
     new Setting(el)
       .setName("Open Bible chapters in reading view")
-      .setDesc("Chapter, book and index notes open ready to read. You can still switch to editing; it stays that way until you open another chapter.")
+      .setDesc("Chapter, book and index notes open in reading view. You can still switch to editing; that note stays in editing until you open another chapter.")
       .addToggle((t) => t.setValue(this.plugin.settings.bibleReadingView)
         .onChange(async (v) => { this.plugin.settings.bibleReadingView = v; await this.plugin.saveSettings(); }));
     new Setting(el)
@@ -1943,11 +1943,12 @@ class PassageIndexSettings extends PluginSettingTab {
     s.openIn = Object.assign({}, DEFAULTS.openIn, s.openIn);
     s.openInVersion = Object.assign({}, s.openInVersion);
     el.createDiv({ cls: "setting-item-description pi-settings-intro",
-      text: "Right-click a passage heading in the pane, or click the arrow in the verse pop-up, to open the passage in one of these. Logos opens the app if it's installed, otherwise the Logos website." });
-    const hints = { logos: "e.g. esv, niv, nasb95 (blank = your Logos default)", biblegateway: "e.g. NIV, ESV (blank = its default)",
-      blb: "e.g. KJV, ESV (blank = its default)", step: "e.g. ESV, NIV (blank = its default)" };
+      text: "Right-click a passage heading in the pane, or click the arrow in the verse pop-up, to open the passage on another Bible site or app. Turn on the ones you want in that menu. Logos opens the app if it's installed, otherwise the Logos website." });
+    const site = "Leave blank for the site's default.";
+    const hints = { logos: "e.g. esv, nasb95. Leave blank for your Logos default.", biblegateway: `e.g. ESV, NIV. ${site}`,
+      blb: `e.g. KJV, ESV. ${site}`, step: `e.g. ESV, NIV. ${site}` };
     for (const t of OPEN_IN) {
-      new Setting(el).setName(t.name).setDesc(`Version: ${hints[t.id]}`)
+      new Setting(el).setName(t.name).setDesc(`Version to open, ${hints[t.id]}`)
         .addText((x) => x.setPlaceholder("default").setValue(s.openInVersion[t.id] || "")
           .onChange(async (v) => { s.openInVersion[t.id] = v.trim(); await this.plugin.saveSettings(); }))
         .addToggle((x) => x.setValue(!!s.openIn[t.id])
