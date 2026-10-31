@@ -82,6 +82,9 @@ const DEFAULTS = {
   versePopup: true, bibleTranslation: "BSB", closeOnCtrlRelease: false,
   // Bibles the wizard has written into the vault: [{ id, short, name, base, chapters, options, created }].
   bibles: [],
+  // Add wizard Bible folders to Obsidian's "Excluded files" (Files and links), so search isn't
+  // flooded with verses. searchHidden lists the entries PI added, so it only removes its own.
+  hideBiblesFromSearch: true, searchHidden: [],
   // How verse numbers look in wizard chapter notes: "heading" (theme decides), "margin", "inline".
   verseNumbers: "margin",
   // Open wizard Bible notes (chapter, book, index) in reading view.
@@ -206,6 +209,7 @@ class PassageIndexPlugin extends Plugin {
       this.registerEvent(this.app.vault.on("delete", (f) => { this.index.remove(f.path); this.refreshViews(); }));
       this.registerEvent(this.app.vault.on("rename", (f, oldPath) => { this.index.remove(oldPath); this.queue(f); }));
       this.buildIndex();
+      this.syncSearchExclusions().catch((e) => console.warn("Passage Index: couldn't update Excluded files:", e));
     });
     this.registerEvent(this.app.workspace.on("file-open", () => this.refreshViews()));
     // Verse-number style for wizard chapter notes, as a class on <body> (styles.css), also in
@@ -614,6 +618,7 @@ class PassageIndexPlugin extends Plugin {
     onProgress?.(done, plan.files.length);
     s.bibles = (s.bibles || []).filter((b) => b.base !== entry.base).concat(done ? [entry] : []);
     await this.saveSettings();
+    await this.syncSearchExclusions();
     return done;
   }
 
@@ -627,6 +632,7 @@ class PassageIndexPlugin extends Plugin {
     this.settings.bibles = (this.settings.bibles || []).filter((b) => b.base !== entry.base);
     this.settings.excludedFolders = this.settings.excludedFolders.filter((f) => f !== entry.base);
     await this.saveSettings();
+    await this.syncSearchExclusions();
   }
 
   // Regenerate a wizard Bible with the options it was made with (downloads it again).
@@ -646,6 +652,25 @@ class PassageIndexPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  // Keep Obsidian's "Excluded files" in step with the wizard Bibles: add their folders when the
+  // setting is on, take out only the entries PI added when it's off or a Bible is removed.
+  // Entries the user added themselves are never touched.
+  async syncSearchExclusions() {
+    const vault = this.app.vault;
+    if (typeof vault.getConfig !== "function" || typeof vault.setConfig !== "function") return;
+    const s = this.settings;
+    const want = s.hideBiblesFromSearch ? (s.bibles || []).map((b) => b.base.replace(/\/$/, "") + "/") : [];
+    const mine = s.searchHidden || [];
+    const current = Array.isArray(vault.getConfig("userIgnoreFilters")) ? vault.getConfig("userIgnoreFilters") : [];
+    const next = current.filter((f) => !mine.includes(f) || want.includes(f));
+    const added = [];
+    for (const f of want) if (!next.includes(f)) { next.push(f); added.push(f); }
+    // Remember ours: ones we just added, plus ones we added earlier and still want.
+    s.searchHidden = want.filter((f) => added.includes(f) || mine.includes(f));
+    if (next.length !== current.length || next.some((f, i) => f !== current[i])) vault.setConfig("userIgnoreFilters", next);
+    await this.saveSettings();
   }
 }
 
@@ -1697,39 +1722,63 @@ class PassageIndexSettings extends PluginSettingTab {
     tabs.find(([id]) => id === this.tab)[2](containerEl.createDiv({ cls: "pi-settings-body" }));
   }
 
-  // What gets indexed, and how references are read.
+  // Closing settings after changing what gets indexed rebuilds the index, with a notice.
+  hide() {
+    super.hide?.();
+    if (!this.needsRebuild) return;
+    this.needsRebuild = false;
+    const notice = new Notice("Passage Index: settings changed, re-reading your notes…", 0);
+    this.plugin.buildIndex().then(() => {
+      notice.setMessage(`Passage Index: index rebuilt (${this.plugin.lastBuild || "done"}).`);
+      window.setTimeout(() => notice.hide(), 4000);
+    });
+  }
+
+  // What gets indexed, and how references are read. Changes here take effect when settings
+  // close (hide() rebuilds).
   displayIndex(el) {
+    const changed = () => { this.needsRebuild = true; };
+    el.createDiv({ cls: "setting-item-description pi-settings-intro",
+      text: "Changes on this tab take effect when you close settings: Passage Index re-reads your notes then, and tells you when it's done." });
     new Setting(el)
       .setName("Excluded folders")
-      .setDesc("One folder per line. Notes in these folders are not indexed.")
+      .setDesc("One folder per line; folders inside them are excluded too. Notes here are never indexed. Bibles you add from the Bible tab are listed here for you. If you keep Bible text from somewhere else (another plugin, an imported Bible), add its folder, or every verse in it will crowd the pane.")
       .addTextArea((t) => {
         t.setValue(this.plugin.settings.excludedFolders.join("\n"));
         t.inputEl.rows = 6;
         t.onChange(async (v) => {
           this.plugin.settings.excludedFolders = v.split("\n").map((s) => s.trim()).filter(Boolean);
           await this.plugin.saveSettings();
+          changed();
         });
       });
     new Setting(el)
       .setName("Not references")
-      .setDesc("One phrase per line. Text that looks like a passage but isn't a citation, such as a book title (Mark 1–8). Hyphens and dashes match each other; case is ignored. Rebuild after changing.")
+      .setDesc("One phrase per line. Text that looks like a passage but isn't one, such as the title of a book you cite: for Mathews, Genesis 1–11:26, add \"Genesis 1–11:26\". Hyphens and dashes match each other; case is ignored.")
       .addTextArea((t) => {
         t.setValue((this.plugin.settings.ignorePhrases || []).join("\n"));
         t.inputEl.rows = 4;
         t.onChange(async (v) => {
           this.plugin.settings.ignorePhrases = v.split("\n").map((s) => s.trim()).filter(Boolean);
           await this.plugin.saveSettings();
+          changed();
         });
       });
     new Setting(el)
       .setName("Ignore property")
-      .setDesc("Frontmatter property listing references a note cites only in passing, e.g. pi-ignore: [Acts 11:28, Acts 25:27]. The note gets no group for them, and it won't appear under them in other notes. A chapter (Acts 11) covers all its verses. Rebuild after changing the property name.")
+      .setDesc("Frontmatter property listing references a note cites only in passing, e.g. pi-ignore: [Acts 11:28, Acts 25:27]. The note gets no group for them, and it won't appear under them in other notes. A chapter (Acts 11) covers all its verses. Tip: right-click a reference in a note to add it.")
       .addText((t) => t.setPlaceholder("pi-ignore").setValue(this.plugin.settings.ignoreProperty || "")
-        .onChange(async (v) => { this.plugin.settings.ignoreProperty = v.trim(); await this.plugin.saveSettings(); }));
+        .onChange(async (v) => { this.plugin.settings.ignoreProperty = v.trim(); await this.plugin.saveSettings(); changed(); }));
     new Setting(el)
       .setName("Rebuild index")
-      .setDesc("Re-read every note. Use after changing excluded folders or 'Not references'.")
-      .addButton((b) => b.setButtonText("Rebuild").onClick(() => this.plugin.buildIndex()));
+      .setDesc("Re-read every note now. You rarely need this: notes are re-read as you edit them, and settings changes rebuild on their own. Use it if the pane ever looks out of date.")
+      .addButton((b) => b.setButtonText("Rebuild").onClick(async () => {
+        b.setDisabled(true).setButtonText("Rebuilding…");
+        this.needsRebuild = false;
+        await this.plugin.buildIndex();
+        b.setDisabled(false).setButtonText("Rebuild");
+        new Notice(`Passage Index: index rebuilt (${this.plugin.lastBuild || "done"}).`);
+      }));
   }
 
   // What the pane shows, and opening results.
@@ -1803,6 +1852,11 @@ class PassageIndexSettings extends PluginSettingTab {
       .setDesc("Chapter, book and index notes open ready to read. You can still switch to editing; it stays that way until you open another chapter.")
       .addToggle((t) => t.setValue(this.plugin.settings.bibleReadingView)
         .onChange(async (v) => { this.plugin.settings.bibleReadingView = v; await this.plugin.saveSettings(); }));
+    new Setting(el)
+      .setName("Keep Bibles out of search")
+      .setDesc("Adds each Bible's folder to Obsidian's Excluded files (Settings → Files and links), so searching for a reference finds your notes, not every verse. Excluded notes are also left out of the graph and shown lower in the quick switcher and link suggestions; links to them still work. Turning this off removes only the folders Passage Index added.")
+      .addToggle((t) => t.setValue(this.plugin.settings.hideBiblesFromSearch)
+        .onChange(async (v) => { this.plugin.settings.hideBiblesFromSearch = v; await this.plugin.syncSearchExclusions(); }));
 
     const bibles = this.plugin.settings.bibles || [];
     if (!bibles.length) {
