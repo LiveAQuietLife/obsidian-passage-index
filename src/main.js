@@ -1706,11 +1706,11 @@ class PassageIndexSettings extends PluginSettingTab {
     containerEl.empty();
     const tabs = [
       ["index", "Index", (el) => this.displayIndex(el)],
-      ["pane", "Pane", (el) => this.displayPane(el)],
       ["topics", "Topics", (el) => this.displayTopics(el)],
+      ["pane", "Pane", (el) => this.displayPane(el)],
       ["verse", "Verse pop-up", (el) => this.displayVerse(el)],
-      ["bible", "Bible", (el) => this.displayBible(el)],
       ["openin", "Open in", (el) => this.displayOpenIn(el)],
+      ["bible", "Bible", (el) => this.displayBible(el)],
     ];
     if (!tabs.some(([id]) => id === this.tab)) this.tab = "index";
     const bar = containerEl.createDiv({ cls: "pi-settings-tabs", attr: { role: "tablist" } });
@@ -1905,14 +1905,15 @@ class PassageIndexSettings extends PluginSettingTab {
 
   // Which notes count as topics (read live; no rebuild needed).
   displayTopics(el) {
+    el.createDiv({ cls: "setting-item-description pi-settings-intro", text: "Topic notes are notes about a subject rather than a passage. In the pane, the Topics section lists every topic note that shares a passage with the note you're viewing; topics you haven't linked yet come first. Results that are topic notes get a \"topic\" tag. Changes here take effect right away." });
     new Setting(el)
       .setName("Topic property")
-      .setDesc("Frontmatter property that marks a topic note, e.g. type (type: topic) or tags (tags: [topic]). Leave empty to use folders only.")
+      .setDesc("The frontmatter property that marks a topic note: e.g. type (for type: topic) or tags (for tags: [topic]). Only frontmatter is read; a #topic tag in the body of a note doesn't count. Leave empty to use folders only.")
       .addText((t) => t.setPlaceholder("type").setValue(this.plugin.settings.topicProperty || "")
         .onChange(async (v) => { this.plugin.settings.topicProperty = v.trim(); await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
     new Setting(el)
       .setName("Topic values")
-      .setDesc("Values of that property that mean \"topic\", separated by commas (e.g. topic, concept, theme). Case is ignored.")
+      .setDesc("Values of that property that mean \"topic\", separated by commas (e.g. topic, concept, theme). Upper/lower case and a leading # are ignored.")
       .addText((t) => t.setPlaceholder("topic").setValue((this.plugin.settings.topicValues || []).join(", "))
         .onChange(async (v) => {
           this.plugin.settings.topicValues = v.split(",").map((s) => s.trim()).filter(Boolean);
@@ -1921,7 +1922,7 @@ class PassageIndexSettings extends PluginSettingTab {
         }));
     new Setting(el)
       .setName("Topic folders")
-      .setDesc("One folder per line. Every note in these folders also counts as a topic.")
+      .setDesc("One folder per line. Every note in these folders, including subfolders, counts as a topic, whatever its properties say.")
       .addTextArea((t) => {
         t.setValue((this.plugin.settings.topicFolders || []).join("\n"));
         t.inputEl.rows = 3;
