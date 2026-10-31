@@ -1509,7 +1509,7 @@ function clip(s, n, fromStart) {
   return fromStart ? "…" + s.slice(s.length - n) : s.slice(0, n) + "…";
 }
 
-// "Bring in the Bible": a step-by-step window that writes a whole translation into the vault.
+// "Add a Bible to your vault": a step-by-step window that writes a whole translation into the vault.
 // Steps: translation → layout → options → review (download, plan, name check) → create.
 class BibleWizard extends Modal {
   constructor(app, plugin, onDone) {
@@ -1524,7 +1524,7 @@ class BibleWizard extends Modal {
   onOpen() {
     this.plugin.openWizard = this;
     this.modalEl.addClass("pi-wizard");
-    this.titleEl.setText("Bring in the Bible");
+    this.titleEl.setText("Add a Bible to your vault");
     this.draw();
   }
   onClose() {
