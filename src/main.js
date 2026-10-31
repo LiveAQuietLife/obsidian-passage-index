@@ -1785,7 +1785,7 @@ class PassageIndexSettings extends PluginSettingTab {
   displayPane(el) {
     const sec = new Setting(el)
       .setName("Group passages by section (pericopes)")
-      .setDesc("Passages in the same section are gathered under that section's heading. The headings come from a downloaded translation; only these have usable ones (BSB, LEB, and TCENT for the New Testament). Download one in the Verse pop-up tab first. A copy downloaded before version 0.0.35 has no headings: download it again there (⟳).");
+      .setDesc("Each translation divides the text into its own sections (pericopes), each with a heading such as \"The Triumphal Entry\". Turn this on to group the pane's passages under those headings. Only three translations offer their headings for free use: BSB, LEB and TCENT (New Testament only). You can pick any of them, whatever translation you read. The one you pick must be downloaded first, in the Verse pop-up tab; you don't have to use it in the pop-up.");
     sec.addDropdown(async (d) => {
       const s = this.plugin.settings;
       d.addOption("", "Off");
@@ -1797,21 +1797,27 @@ class PassageIndexSettings extends PluginSettingTab {
       d.setValue(s.sectionsFrom || "");
       d.onChange(async (v) => { s.sectionsFrom = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); });
     });
+    // The chapter-only toggle only works with broad hiding on (the pane hides both or neither),
+    // so it and the slider show only then.
+    const s = this.plugin.settings;
+    const redraw = () => { el.empty(); this.displayPane(el); };
     new Setting(el)
       .setName("Hide broad matches")
-      .setDesc("Hide notes whose closest match spans many chapters (e.g. Mark 1–8). The pane's filter button shows them again.")
-      .addToggle((t) => t.setValue(this.plugin.settings.hideBroad)
-        .onChange(async (v) => { this.plugin.settings.hideBroad = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
-    new Setting(el)
-      .setName("Broad means more than")
-      .setDesc("Number of chapters. A match spanning more chapters than this counts as broad.")
-      .addSlider((s) => s.setLimits(1, 10, 1).setValue(this.plugin.settings.broadChapters).setDynamicTooltip()
-        .onChange(async (v) => { this.plugin.settings.broadChapters = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
-    new Setting(el)
-      .setName("Hide chapter-only mentions")
-      .setDesc("Under a verse (Matt 24:3), hide notes that only mention the whole chapter (Matthew 24). The pane's filter button shows them again.")
-      .addToggle((t) => t.setValue(this.plugin.settings.hideChapter)
-        .onChange(async (v) => { this.plugin.settings.hideChapter = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
+      .setDesc("Hide notes that only cite a wide passage around this one (e.g. Mark 1–8 when you're on Mark 4:3). To see hidden notes, click the filter button at the top of the pane; that shows them only until you click it again, and doesn't change this setting.")
+      .addToggle((t) => t.setValue(s.hideBroad)
+        .onChange(async (v) => { s.hideBroad = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); redraw(); }));
+    if (s.hideBroad) {
+      new Setting(el)
+        .setName("Broad means more than … chapters")
+        .setDesc("A passage wider than this many chapters counts as broad. Default: 2.")
+        .addSlider((x) => x.setLimits(1, 10, 1).setValue(s.broadChapters).setDynamicTooltip()
+          .onChange(async (v) => { s.broadChapters = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
+      new Setting(el)
+        .setName("Hide chapter-only mentions")
+        .setDesc("Hide notes that mention only the chapter, with no verse (e.g. Matt 24 when you're on Matt 24:3). The filter button shows these too.")
+        .addToggle((t) => t.setValue(s.hideChapter)
+          .onChange(async (v) => { s.hideChapter = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
+    }
     new Setting(el)
       .setName("Highlight duration")
       .setDesc("Seconds the reference stays highlighted after opening a result.")
@@ -1821,7 +1827,7 @@ class PassageIndexSettings extends PluginSettingTab {
     // Ctrl is needed. Point there rather than duplicating the setting.
     new Setting(el)
       .setName("Hover previews")
-      .setDesc("Hovering a result or a topic shows the note in a preview, with no key needed. To require Ctrl (Cmd on a Mac), turn on \"Passage Index\" under Settings → Page preview. (The verse pop-up on passage labels always uses Ctrl.)")
+      .setDesc("Point at a note in the pane to see a preview of it. No key is needed. If you'd rather hold Ctrl (Cmd on a Mac) first, click the button and turn on Passage Index in Page preview.")
       .addButton((b) => b.setButtonText("Open Page preview settings").onClick(() => {
         const pp = this.app.internalPlugins?.getPluginById?.("page-preview");
         if (!pp?.enabled) { new Notice("Page preview is turned off under Core plugins."); return; }
