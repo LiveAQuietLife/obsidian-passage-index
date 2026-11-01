@@ -112,4 +112,5 @@ const EXTRA = [
   [128, "CD", { alias: "CD", verseOnly: true }],
 ];
 
-module.exports = { BIBLE, EXTRA, BOOKS: [...BIBLE, ...EXTRA] };
+const BOOKS = [...BIBLE, ...EXTRA];
+export { BIBLE, EXTRA, BOOKS };

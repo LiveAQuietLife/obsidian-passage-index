@@ -2,7 +2,7 @@
 // One reader shared by the index and the pane (design notes: "one shared reader").
 // Plain JS, no dependencies.
 //
-//   const { createReader } = require("./reader");
+//   import { createReader } from "./reader.js";
 //   const reader = createReader();          // uses books.js
 //   reader.parse("See Dan 9:27; 11:31; 12:11 and Mark 13:14a.")
 //   reader.parseName("Isaiah 56v7")          // filenames, incl. "v" and "." styles
@@ -10,10 +10,9 @@
 // Each reference: { book, bookName, c1, v1, c2, v2, start, end, line, text }
 //   v1/v2 are null for chapter-only references ("Mark 13", "Mark 13–14").
 
-const { BOOKS } = require("./books");
+import { BOOKS } from "./books.js";
 
 const SP = "[ \\t\\u00a0]";               // space, tab or no-break space (never a line break)
-const DASH = "[-\\u2010-\\u2015\\u2212]";  // hyphen, en/em dash, minus, etc.
 const MAX_CH = 151;
 const MAX_V = 176;
 // Books with one chapter: a bare number is a verse ("Jude 6", "2 Jn 8").
@@ -27,7 +26,7 @@ const NUMBER_FORMS = {
 };
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const norm = (s) => s.replace(/[\s ]+/g, " ").replace(/\.$/, "").toLowerCase();
+const norm = (s) => s.replace(/[\s\u00a0]+/g, " ").replace(/\.$/, "").toLowerCase();
 
 function buildAliases(books) {
   const map = new Map(); // normalized alias -> { id, name, verseOnly }
@@ -83,7 +82,7 @@ function createReader(books = BOOKS) {
   // Sticky sub-patterns used while walking a reference body.
   const reNum = /(\d{1,3})(?![\d])/y;
   // Chapter/verse separator: "13:14", "13: 14", "13.14", "13v14", and European "5,1" (no space).
-  const reSep = /(?:[.v,]|:[  ]?)(?=\d)/y;
+  const reSep = /(?:[.v,]|:[ \u00a0]?)(?=\d)/y;
   const reSuffix = /(?:ff?|[a-d])(?![\p{L}])/uy; // 14a, 14b, 22f, 22ff
   // Range dash. Spaces are allowed around - and –, but a spaced em dash ("35 — 8") is punctuation.
   const reDash = new RegExp(`(?:${SP}*[-\\u2010-\\u2013\\u2212]${SP}*|\\u2014|\\u2015)(?=\\d)`, "y");
@@ -236,4 +235,4 @@ function format(r) {
   return s;
 }
 
-module.exports = { createReader, overlaps, format };
+export { createReader, overlaps, format };

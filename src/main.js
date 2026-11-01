@@ -1,7 +1,13 @@
 // Passage Index — Obsidian plugin entry point.
-const { Plugin, ItemView, PluginSettingTab, Setting, TFile, TFolder, MarkdownView, Menu, Modal, MarkdownRenderChild, Notice, setIcon, requestUrl, normalizePath, editorLivePreviewField } = require("obsidian");
-const { StateEffect, StateField } = require("@codemirror/state");
-const { Decoration, EditorView, ViewPlugin, WidgetType } = require("@codemirror/view");
+import { Plugin, ItemView, PluginSettingTab, Setting, TFile, TFolder, MarkdownView, Menu, Modal, MarkdownRenderChild, Notice, setIcon, requestUrl, normalizePath, editorLivePreviewField } from "obsidian";
+import { StateEffect, StateField } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
+import { createReader, format } from "./reader.js";
+import { PassageIndex, sortTopics, INTERTEXT_HEADINGS } from "./passage-index.js";
+import { passageText, trimBible, sectionOf, translationInfo, downloadUrl, TRANSLATIONS, LICENSES } from "./bible.js";
+import { BOOKS } from "./books.js";
+import { coverage, marks, level } from "./coverage.js";
+import { planBible, DEFAULT_OPTIONS as WIZARD_DEFAULTS } from "./wizard.js";
 
 // Verse numbers in Bible chapter notes, Live Preview. The notes keep "###### 3" lines (so
 // [[Genesis 1#3]] links work); in a note whose frontmatter has `bible-chapter`, PI hides each
@@ -43,13 +49,7 @@ function verseNumberExtension(plugin) {
     update(u) { if (u.docChanged || u.viewportChanged || u.selectionSet || u.transactions.some((t) => t.reconfigured)) this.decorations = build(u.view); }
   }, { decorations: (v) => v.decorations });
 }
-const { createReader, format } = require("./reader");
-const { PassageIndex, sortTopics } = require("./passage-index");
-const { passageText, trimBible, sectionOf, translationInfo, downloadUrl, TRANSLATIONS, LICENSES } = require("./bible");
-const { BOOKS } = require("./books");
-const { coverage, marks, level } = require("./coverage");
 const BOOK_NAME = Object.fromEntries(BOOKS.map((b) => [b[0], b[1]]));
-const { planBible, DEFAULT_OPTIONS: WIZARD_DEFAULTS } = require("./wizard");
 const VALID_ID = /^[A-Za-z0-9_-]+$/; // translation ids become file names
 // Today in the user's own time zone (toISOString would give the UTC date, a day ahead in the evening).
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -77,6 +77,8 @@ const DEFAULTS = {
   topicProperty: "type", topicValues: ["topic"], topicFolders: [],
   // Frontmatter property listing references a note cites only in passing (pi-ignore: [Acts 11:28]).
   ignoreProperty: "pi-ignore",
+  // Headings that start a note's Intertexts section (any level; case ignored).
+  intertextHeadings: [...INTERTEXT_HEADINGS],
   // Verse pop-up: Ctrl + hover a passage label. The text comes from a translation downloaded
   // into the plugin folder (bibles/<id>.json).
   versePopup: true, bibleTranslation: "BSB", closeOnCtrlRelease: false,
@@ -429,7 +431,7 @@ class PassageIndexPlugin extends Plugin {
     window.clearTimeout(this.flashTimer);
     cm.dispatch({ effects: flashEffect.of({ from: editor.posToOffset(from), to: editor.posToOffset(to) }) });
     this.flashTimer = window.setTimeout(() => {
-      try { cm.dispatch({ effects: flashEffect.of(null) }); } catch (e) { /* tab closed */ }
+      try { cm.dispatch({ effects: flashEffect.of(null) }); } catch { /* tab closed */ }
     }, (this.settings.flashSeconds || 3) * 1000);
   }
 
@@ -1060,7 +1062,7 @@ ${was}` : `Section: ${b.s.title}`);
         t.createSpan({ cls: "pi-section-range", text: ` ${name} ${range}` });
         const n = b.groups.reduce((a, g) => a + g.notes.length, 0);
         sum.createSpan({ cls: "pi-count", text: String(b.groups.length),
-          attr: { "aria-label": `${b.groups.length} passages in this section${n ? `, ${n} notes` : ""}` } });
+          attr: { "aria-label": `${b.groups.length} passages in this section${n ? `, ${n} note${n === 1 ? "" : "s"}` : ""}` } });
         const inner = det.createDiv({ cls: "pi-section-list" });
         for (const g of b.groups) renderGroup(inner, g);
       }
@@ -1429,7 +1431,7 @@ ${was}` : `Section: ${b.s.title}`);
     menu.addItem((i) => i.setTitle(`Copy “${g.label}”`).setIcon("copy")
       .onClick(() => this.copy(g.label, "Passage copied")));
     if (g.notes.length) {
-      menu.addItem((i) => i.setTitle(`Copy links to these ${g.notes.length} notes`).setIcon("links-coming-in")
+      menu.addItem((i) => i.setTitle(g.notes.length === 1 ? "Copy link to this note" : `Copy links to these ${g.notes.length} notes`).setIcon("links-coming-in")
         .onClick(() => {
           const links = g.notes.map((n) => tfile(n.path)).filter(Boolean)
             .map((f) => "- " + this.app.fileManager.generateMarkdownLink(f, file.path));
@@ -1573,7 +1575,7 @@ class BibleWizard extends Modal {
       d.onChange((v) => { st.id = v === "__other" ? "" : v; this.draw(); });
     });
     if (!known) {
-      new Setting(body).setName("Translation id").setDesc("Any id from bible.helloao.org's list of translations, e.g. eng_kjv.")
+      new Setting(body).setName("Translation ID").setDesc("Any ID from bible.helloao.org's list of translations, e.g. eng_kjv.")
         .addText((t) => t.setPlaceholder("eng_kjv").setValue(st.id).onChange((v) => { st.id = v.trim(); }));
     }
     const info = translationInfo(st.id);
@@ -1775,6 +1777,19 @@ class PassageIndexSettings extends PluginSettingTab {
       .setDesc("Frontmatter property listing references a note cites only in passing, e.g. pi-ignore: [Acts 11:28, Acts 25:27]. The note gets no group for them, and it won't appear under them in other notes. A chapter (Acts 11) covers all its verses. Tip: right-click a reference in a note to add it.")
       .addText((t) => t.setPlaceholder("pi-ignore").setValue(this.plugin.settings.ignoreProperty || "")
         .onChange(async (v) => { this.plugin.settings.ignoreProperty = v.trim(); await this.plugin.saveSettings(); changed(); }));
+    new Setting(el)
+      .setName("Intertexts headings")
+      .setDesc("One heading per line. A heading with one of these names, at any level, starts a note's Intertexts section; the pane's Intertexts section reads the list under it. The whole heading must match; case is ignored. Leave empty to use Intertexts and Intertext.")
+      .addTextArea((t) => {
+        t.setPlaceholder(INTERTEXT_HEADINGS.join("\n"));
+        t.setValue((this.plugin.settings.intertextHeadings || []).join("\n"));
+        t.inputEl.rows = 3;
+        t.onChange(async (v) => {
+          this.plugin.settings.intertextHeadings = v.split("\n").map((s) => s.trim().replace(/^#+\s*/, "")).filter(Boolean);
+          await this.plugin.saveSettings();
+          changed();
+        });
+      });
     new Setting(el)
       .setName("Rebuild index")
       .setDesc("Re-read every note now. You rarely need this: notes are re-read as you edit them, and settings changes rebuild on their own. Use it if the pane ever looks out of date.")
@@ -1998,9 +2013,9 @@ class PassageIndexSettings extends PluginSettingTab {
 
     if (!known) {
       new Setting(el)
-        .setName("Translation id")
+        .setName("Translation ID")
         .setDesc(createFragment((f) => {
-          f.appendText("Any id from the Free Use Bible API's ");
+          f.appendText("Any ID from the Free Use Bible API's ");
           f.createEl("a", { text: "list of translations", href: "https://bible.helloao.org/api/available_translations.json" });
           f.appendText(" (e.g. eng_kjv, or another language). Letters, digits, - and _ only.");
         }))
@@ -2081,4 +2096,4 @@ class ConfirmModal extends Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-module.exports = PassageIndexPlugin;
+export default PassageIndexPlugin;

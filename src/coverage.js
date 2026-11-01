@@ -151,4 +151,4 @@ function marks(refs, book) {
   return { chapters, verses };
 }
 
-module.exports = { coverage, marks, level, versesIn, chaptersIn };
+export { coverage, marks, level, versesIn, chaptersIn };

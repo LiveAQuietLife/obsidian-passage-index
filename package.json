@@ -1,0 +1,9 @@
+{
+  "name": "obsidian-passage-index",
+  "private": true,
+  "description": "Passage Index plugin for Obsidian. Build: node build.js <version>",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

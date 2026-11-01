@@ -1,7 +1,7 @@
 {
   "id": "passage-index",
   "name": "Passage Index",
-  "version": "0.0.45",
+  "version": "0.0.49",
   "minAppVersion": "1.5.0",
   "description": "A side pane that follows your reading and shows every note touching the passages in the current note.",
   "author": "LiveAQuietLife",

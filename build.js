@@ -1,4 +1,5 @@
-// Build: combine src/*.js into one main.js (Obsidian loads a single file).
+// Build: bundle src/*.js into one main.js with esbuild (Obsidian loads a single file).
+// Needs: npm install (once).
 // Run: node build.js <version>     e.g. node build.js 0.0.1
 // Output: dist/main.js, manifest.json, styles.css (upload these to the GitHub release);
 // also updates manifest.json at the repo root.
@@ -9,22 +10,20 @@ const version = process.argv[2];
 if (!/^\d+\.\d+\.\d+$/.test(version || "")) { console.error("Usage: node build.js <x.y.z>"); process.exit(1); }
 
 const SRC = path.join(__dirname, "src");
-const modules = ["books", "reader", "passage-index", "coverage", "bible", "wizard", "main"];
-let out = `/* Passage Index ${version} — built ${new Date().toISOString().slice(0, 10)}. Source: src/ */\n"use strict";\n`;
-out += "const __mods = {};\nconst __cache = {};\n";
-out += `function __req(name) {
-  if (name === "obsidian" || name.startsWith("@codemirror/")) return require(name);
-  const key = name.replace(/^\\.\\//, "");
-  if (__cache[key]) return __cache[key].exports;
-  const module = (__cache[key] = { exports: {} });
-  __mods[key](module, module.exports, __req);
-  return module.exports;
-}\n`;
-for (const m of modules) {
-  const code = fs.readFileSync(path.join(SRC, m + ".js"), "utf8");
-  out += `\n__mods[${JSON.stringify(m)}] = function (module, exports, require) {\n${code}\n};\n`;
-}
-out += `\nmodule.exports = __req("main");\n`;
+// src/ is ES modules; esbuild bundles them into one CommonJS file. Obsidian supplies
+// "obsidian" and "@codemirror/*" at runtime, so they stay as require() calls.
+const result = require("esbuild").buildSync({
+  entryPoints: [path.join(SRC, "main.js")],
+  bundle: true,
+  format: "cjs",
+  platform: "browser",
+  target: "es2020",
+  external: ["obsidian", "electron", "@codemirror/*", "@lezer/*"],
+  banner: { js: `/* Passage Index ${version} — built ${new Date().toISOString().slice(0, 10)}. Source: src/ */` },
+  write: false,
+  logLevel: "warning",
+});
+const out = result.outputFiles[0].text;
 
 const manifest = {
   id: "passage-index",

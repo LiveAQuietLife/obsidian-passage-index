@@ -203,4 +203,4 @@ function passageText(bible, ref, { chapterVerses = 3, maxVerses = 12 } = {}) {
   return { ok: true, verses, more: total - verses.length, note: "" };
 }
 
-module.exports = { USFM, TRANSLATIONS, LICENSES, translationInfo, downloadUrl, verseText, trimBible, passageText, sectionOf };
+export { USFM, TRANSLATIONS, LICENSES, translationInfo, downloadUrl, verseText, trimBible, passageText, sectionOf };

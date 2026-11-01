@@ -1,7 +1,7 @@
 // Passage Index — the index and the grouping/ranking used by the pane.
 // No Obsidian dependencies, so it can be tested with plain Node.
 
-const { format } = require("./reader");
+import { format } from "./reader.js";
 
 const blank = (s) => s.replace(/[^\n]/g, " ");
 const lo = (r) => r.c1 * 1000 + (r.v1 ?? 0);
@@ -28,6 +28,8 @@ function matchType(group, ref) {
 
 // ---- Intertext Register -------------------------------------------------------------
 // Reads the note's "## Intertexts" section and open "#intertext" tasks. Writes nothing.
+// The section heading can be any level; its text must match one of `headings` (case ignored).
+const INTERTEXT_HEADINGS = ["Intertexts", "Intertext"];
 const RELATION = {
   quotes:        { rank: 0, test: /\bquot/i },
   "alludes to":  { rank: 1, test: /\ballu/i },
@@ -56,7 +58,8 @@ function readLine(lineText, ref) {
   return { relation, citation: plainLinks(citation), description: plainLinks(description) };
 }
 
-function readIntertexts(lines, bodyRefs) {
+function readIntertexts(lines, bodyRefs, headings) {
+  const names = new Set((headings?.length ? headings : INTERTEXT_HEADINGS).map((s) => s.trim().toLowerCase()));
   const byLine = new Map();
   for (const r of bodyRefs) {
     if (!byLine.has(r.line)) byLine.set(r.line, []);
@@ -66,7 +69,7 @@ function readIntertexts(lines, bodyRefs) {
   let inSection = 0; // heading level of the open "Intertexts" section, or 0
   lines.forEach((raw, i) => {
     const h = raw.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
-    if (h) { inSection = /^intertexts?$/i.test(h[2]) ? h[1].length : (inSection && h[1].length > inSection ? inSection : 0); return; }
+    if (h) { inSection = names.has(h[2].toLowerCase()) ? h[1].length : (inSection && h[1].length > inSection ? inSection : 0); return; }
     const refs = byLine.get(i) || [];
     if (/^\s*[-*+]\s+\[ \]\s/.test(raw) && /(^|\s)#intertext\b/i.test(raw)) {
       if (refs.length) openTasks.push({ line: i, refs, lineText: refs[0].lineText });
@@ -130,7 +133,7 @@ class PassageIndex {
     for (const m of main) if (!refs.some((r) => sameRange(r, m))) refs.push({ ...m, line: -1, text: format(m), lineText: "" });
 
     const bodyStart = fm ? fm[0].split(String.fromCharCode(10)).length : 0; // first line after the frontmatter
-    const entry = { path, refs, main, bodyStart, ignored: ignored.map(format), ...readIntertexts(lines, bodyRefs) };
+    const entry = { path, refs, main, bodyStart, ignored: ignored.map(format), ...readIntertexts(lines, bodyRefs, this.opts.intertextHeadings) };
     this.files.set(path, entry);
     for (const r of refs) {
       if (!this.byBook.has(r.book)) this.byBook.set(r.book, new Set());
@@ -336,4 +339,4 @@ function sortTopics(topics) {
     (MATCH[a.via[0].match].rank - MATCH[b.via[0].match].rank) || name(a.path).localeCompare(name(b.path)));
 }
 
-module.exports = { PassageIndex, matchType, MATCH, RELATION, readLine, sortTopics };
+export { PassageIndex, matchType, MATCH, RELATION, INTERTEXT_HEADINGS, readLine, sortTopics };

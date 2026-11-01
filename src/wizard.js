@@ -6,8 +6,8 @@
 //   {root}/{SHORT}/{Book}/{Book} {ch}.md   (other translations: "{Book} {ch} ({SHORT}).md")
 //   # {Book} {ch}, then each verse as "###### {v}" with its text on the next line
 //   (Bible Study Kit style, so Bible Linker and Local Bible Ref can read it).
-const { BIBLE } = require("./books");
-const { USFM, verseText } = require("./bible");
+import { BIBLE } from "./books.js";
+import { USFM, verseText } from "./bible.js";
 
 // SBL abbreviations for the short-name aliases ("Rev 1").
 const ABBR = [
@@ -193,4 +193,4 @@ function bibleIndex(books, { tr, chName, bookNote, trName, o }) {
   return lines.join("\n");
 }
 
-module.exports = { DEFAULT_OPTIONS, ABBR, planBible, bookList };
+export { DEFAULT_OPTIONS, ABBR, planBible, bookList };
