@@ -942,7 +942,8 @@ class PassagePane extends ItemView {
 
     if (!groups.length) { el.createDiv({ cls: "pi-empty", text: "No scripture references in this note." }); return; }
 
-    const dets = [];
+    // Collapse all / Expand all cover the Intertexts and Topics sections too.
+    const dets = [...el.querySelectorAll("details.pi-intertexts, details.pi-topics")];
     const setAll = (open, except) => { for (const d of dets) if (d !== except && !(except && d.contains(except))) d.open = open; };
     const tools = titleRow.createDiv({ cls: "pi-tools" });
     const btn = (icon, label, fn) => {
