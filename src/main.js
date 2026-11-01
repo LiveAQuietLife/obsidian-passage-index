@@ -1251,11 +1251,12 @@ ${was}` : `Section: ${b.s.title}`);
     if (!n.lineText) { item.createDiv({ cls: "pi-line pi-faint", text: "In the note's title" }); return; }
     const line = item.createDiv({ cls: "pi-line" });
     const i = n.lineCol >= 0 && n.lineText.startsWith(n.refText, n.lineCol) ? n.lineCol : n.lineText.indexOf(n.refText);
-    if (i >= 0) {
-      line.appendText(clip(n.lineText.slice(0, i), 60, true));
-      line.createEl("mark", { text: n.refText });
-      line.appendText(clip(n.lineText.slice(i + n.refText.length), 80, false));
-    } else line.appendText(clip(n.lineText, 140, false));
+    const p = plainAround(n.lineText, i, n.refText.length);
+    if (p.ref) {
+      line.appendText(clip(p.before, 60, true));
+      line.createEl("mark", { text: p.ref });
+      line.appendText(clip(p.after, 80, false));
+    } else line.appendText(clip(p.before, 140, false));
     if (n.more) line.createSpan({ cls: "pi-more", text: ` (+${n.more} more)` });
   }
 
@@ -1395,7 +1396,7 @@ ${was}` : `Section: ${b.s.title}`);
       list.createDiv({ cls: "pi-it-head", text: "Open" });
       for (const n of open) row(n, (item) => {
         item.addClass("pi-open");
-        const text = n.lineText.replace(/^[-*+]\s+\[ \]\s*/, "").replace(/\s*#intertext\b/gi, "");
+        const text = plainMarkdown(n.lineText.replace(/\s*#intertext\b/gi, ""));
         const line = item.createDiv({ cls: "pi-it-task" });
         // Questions read from the start; the matching reference is highlighted if it fits.
         const shown = clip(text, 180, false);
@@ -1509,6 +1510,38 @@ function hiddenText(nChapter, nBroad) {
   if (nChapter) parts.push(`${nChapter} chapter mention${nChapter > 1 ? "s" : ""}`);
   if (nBroad) parts.push(`${nBroad} broad match${nBroad > 1 ? "es" : ""}`);
   return parts.join(", ") + " hidden";
+}
+
+// A note line as plain text for the pane: no list/heading/quote markers, links shown by
+// their display text, no bold/italic/highlight/code marks, comments, footnotes or block ids.
+// Display only; the note is untouched.
+function plainMarkdown(s) {
+  return s
+    .replace(/%%.*?%%/g, "")
+    .replace(/^\s*(>\s*)+(\[![^\]]*\][+-]?\s*)?/, "")
+    .replace(/^\s*([-*+]|\d+[.)])\s+(\[.\]\s+)?/, "")
+    .replace(/^\s*#{1,6}\s+/, "")
+    .replace(/!?\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
+    .replace(/!?\[\[([^\]]*)\]\]/g, (m, t) => t.replace(/#\^[\w-]+$/, "").replace(/#/g, " › "))
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[\^[^\]]*\]/g, "")
+    .replace(/<\/?[a-z][^>]*>/gi, "")
+    .replace(/\*\*|__|~~|==/g, "")
+    .replace(/(^|[^\w*])\*(?=\S)([^*]*?\S)\*(?![\w*])/g, "$1$2")
+    .replace(/(^|[^\w])_(?=\S)([^_]*?\S)_(?!\w)/g, "$1$2")
+    .replace(/`+/g, "")
+    .replace(/\s\^[\w-]+\s*$/, "");
+}
+
+// plainMarkdown on a line, keeping track of the reference at [i, i + len): returns the text
+// before it, the reference as shown, and the text after (ref null if it can't be found).
+function plainAround(text, i, len) {
+  const A = String.fromCharCode(0xE000), B = String.fromCharCode(0xE001);
+  if (i < 0) return { before: plainMarkdown(text), ref: null, after: "" };
+  const s = plainMarkdown(text.slice(0, i) + A + text.slice(i, i + len) + B + text.slice(i + len));
+  const a = s.indexOf(A), b = s.indexOf(B);
+  if (a < 0 || b < a) return { before: s.split(A).join("").split(B).join(""), ref: null, after: "" };
+  return { before: s.slice(0, a), ref: s.slice(a + 1, b), after: s.slice(b + 1) };
 }
 
 function clip(s, n, fromStart) {
