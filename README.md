@@ -4,6 +4,8 @@ A side pane that follows your reading. Open a note, and Passage Index shows ever
 
 Desktop only.
 
+![A Revelation passage note with the Passage Index pane beside it](images/main-view.jpg)
+
 ## What it reads
 
 Passage Index reads scripture references in every note and treats variants as the same verse:
@@ -32,6 +34,8 @@ The pane has two tabs, **Index** and **Map**. The Index tab has three parts: pas
 - **Hover** a result to preview the note at that line (this follows Obsidian's Page preview setting).
 - **Hold Ctrl** (Cmd on a Mac) and point at a passage heading to read the verses (see *Verse pop-up*).
 
+![Passage groups opened, with results tagged about, exact, inside and chapter](images/pane-sidebar.jpg)
+
 #### Right-click a result
 
 - **Open in new tab** or **Open to the right**.
@@ -48,6 +52,8 @@ The pane has two tabs, **Index** and **Map**. The Index tab has three parts: pas
 ### Topics
 
 Lists topic notes that share a passage with the note you're reading, unlinked ones first, so you can see which topics you haven't linked yet. Which notes count as topics is set in the *Topics* tab.
+
+![Topic notes sharing Daniel 7 with the current note; a linked one is marked](images/topics.jpg)
 
 ### Intertexts
 
@@ -86,9 +92,13 @@ Anything else (for example *mentions*), or no parentheses, is listed without a k
 - **Used by:** other notes' intertext lines that point into this note's main passage. Open `Isaiah 56v7` and you see that Mark 11:17 quotes it.
 - **Open:** other notes' unfinished `#intertext` tasks naming this passage.
 
+![The Intertexts section listing the passages this note alludes to and echoes](images/intertexts.jpg)
+
 ### Map
 
 A coverage map of the main passage's book: one square per chapter, shaded by how many references fall in it (none, 1, 2–3, 4+). Click a chapter to see its verses; click a square to list the notes covering it. Your current note's verses are outlined. Pick any other book from the book list.
+
+![The Map tab: Revelation's chapters shaded by how often they are referenced](images/map-tab.jpg)
 
 The command **Insert coverage map** adds a live `pi-map` code block to a note:
 
@@ -101,6 +111,8 @@ Revelation
 ## Verse pop-up
 
 Hold **Ctrl** (Cmd on a Mac) and point at a passage in the pane to read the verses. The pop-up uses a hidden copy of a translation that Passage Index downloads once (see *Translations*).
+
+![The verse pop-up showing Daniel 7:13 in the BSB, with NET and LEB to switch to](images/verse-popup.jpg)
 
 The small arrow beside the reference in the pop-up opens the passage in Logos, Bible Gateway, Blue Letter Bible or STEP Bible. With one of them turned on, it goes straight there; with several, it shows a menu.
 
@@ -137,6 +149,8 @@ Turn on the apps you want in the right-click menu and the pop-up: **Logos**, **B
 **Add a Bible to your vault** (optional) opens a wizard that writes a whole translation into your vault as notes: one note per chapter, each verse a small heading you can link to (`[[Revelation 1#12]]`). Options include section headings, footnotes, previous/next links, index notes, aliases and Breadcrumbs properties. These notes are separate from the Translations tab's hidden copies. The Bible's folder is excluded from the index automatically.
 
 Also here: how verse numbers look, opening chapters in reading view, and keeping Bibles out of Obsidian's search. Each Bible you've added can be opened, regenerated or removed (to the trash).
+
+![The Bible tab of the settings](images/settings-bible-tab.jpg)
 
 ## Network use
 
