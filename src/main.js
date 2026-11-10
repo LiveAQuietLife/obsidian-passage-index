@@ -251,7 +251,19 @@ class PassageIndexPlugin extends Plugin {
   }
 
   isExcluded(path) {
-    return this.settings.excludedFolders.some((f) => f && (path === f || path.startsWith(f.replace(/\/$/, "") + "/")));
+    return !!this.excludedBy(path);
+  }
+
+  // The excluded folder a path is in (as written in settings), or undefined.
+  excludedBy(path) {
+    return this.settings.excludedFolders.find((f) => f && (path === f || path.startsWith(f.replace(/\/$/, "") + "/")));
+  }
+
+  // Open Passage Index's settings at one of its tabs ("index", "verse", …).
+  openSettings(tab) {
+    if (this.settingTab) this.settingTab.tab = tab;
+    this.app.setting?.open?.();
+    this.app.setting?.openTabById?.(this.manifest.id);
   }
 
   // Read live from Obsidian's metadata cache, so changing the setting needs no rebuild.
@@ -913,7 +925,10 @@ class PassagePane extends ItemView {
     const titleRow = head.createDiv({ cls: "pi-title-row" });
     titleRow.createDiv({ cls: "pi-title", text: file.basename });
     const main = groups.filter((g) => g.isMain).map((g) => g.label);
-    head.createDiv({ cls: "pi-sub", text: main.length ? `Main passage: ${main.join("; ")}` : "No main passage (topic note)" });
+    // A note in an excluded folder isn't read at all, so "no references" would mislead.
+    const excludedBy = this.plugin.excludedBy(file.path);
+    if (excludedBy) head.createDiv({ cls: "pi-sub", text: `In an excluded folder (${excludedBy})` });
+    else head.createDiv({ cls: "pi-sub", text: main.length ? `Main passage: ${main.join("; ")}` : "No main passage (topic note)" });
     const ignored = this.plugin.index.ignoredFor(file.path);
     if (ignored.length) head.createDiv({ cls: "pi-sub pi-ignored", text: `Ignoring: ${ignored.join("; ")}` });
 
@@ -930,6 +945,14 @@ class PassagePane extends ItemView {
       });
     }
     if (tab === "map") { this.renderMap(el, file); return; }
+
+    if (excludedBy) {
+      const msg = el.createDiv({ cls: "pi-empty" });
+      msg.appendText(`This note is in an excluded folder (${excludedBy}), so Passage Index doesn't read it, and it doesn't appear in other notes' results. `);
+      const link = msg.createEl("a", { text: "Change excluded folders", href: "#" });
+      link.addEventListener("click", (evt) => { evt.preventDefault(); this.plugin.openSettings("index"); });
+      return;
+    }
 
     // Broad matches ("Mark 1–8") and chapter-only mentions ("Matthew 24" under Matt 24:3)
     // can be hidden, in the passage groups and in Topics alike.
@@ -1226,9 +1249,7 @@ ${was}` : `Section: ${b.s.title}`);
     add.addEventListener("click", (evt) => {
       evt.stopPropagation();
       this.hideVerse();
-      if (this.plugin.settingTab) this.plugin.settingTab.tab = "verse";
-      this.app.setting?.open?.();
-      this.app.setting?.openTabById?.(this.plugin.manifest.id);
+      this.plugin.openSettings("verse");
     });
   }
 
