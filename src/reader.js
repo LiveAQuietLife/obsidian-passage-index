@@ -150,8 +150,9 @@ function createReader(books = BOOKS) {
       // First reference (with optional range).
       let c = first.a, v = first.b, end = first.end, refStart = m.index;
       let c2 = c, v2 = v;
+      // A dash before a numbered book is punctuation, not a range: "Isa 53:7 - 1 Pet 2:22".
       const d = at(reDash, text, end);
-      if (d) {
+      if (d && !startsBook(text, d.end)) {
         const r = readCV(text, d.end);
         if (r) {
           if (single && r.b === null) { v2 = r.a; }                // Jude 5–7
@@ -187,7 +188,7 @@ function createReader(books = BOOKS) {
         if (rv === null && info.verseOnly) break;
         let rc2 = rc, rv2 = rv, rend = r.end;
         const d2 = at(reDash, text, rend);
-        if (d2) {
+        if (d2 && !startsBook(text, d2.end)) {
           const r2 = readCV(text, d2.end);
           if (r2) {
             if (rv === null) { rc2 = r2.a; rv2 = r2.b; }

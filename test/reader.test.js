@@ -67,6 +67,21 @@ const cases = [
   ["Am 5:24", ["Amos 5:24"]],
   ["Mark 2026 notes", []],
   ["Mr. Smith", []],
+  // 0.1.2: a dash before a numbered book is punctuation, not a range.
+  ["Isa 53:1 - 2 Pet 2:22", ["Isaiah 53:1", "2 Peter 2:22"]],
+  ["Isa 53:7 - 1 Pet 2:22", ["Isaiah 53:7", "1 Peter 2:22"]],
+  ["Ps 110:1 – 1 Cor 15:25", ["Psalms 110:1", "1 Corinthians 15:25"]],
+  ["Gen 3 - 1 John 3:8", ["Genesis 3", "1 John 3:8"]],
+  ["Dan 9:27; 11:31 - 2 Thess 2:4", ["Daniel 9:27", "Daniel 11:31", "2 Thessalonians 2:4"]],
+  ["Gen 1:1 - 2:3", ["Genesis 1:1–2:3"]],
+  ["Mark 13:1 - 37", ["Mark 13:1–37"]],
+  // 0.1.2: short aliases that are also words count only with chapter:verse.
+  ["Is 1 enough?", []],
+  ["Re 3 times", []],
+  ["Da 2 Kings", []],
+  ["Is 53:5", ["Isaiah 53:5"]],
+  ["Re 1:8", ["Revelation 1:8"]],
+  ["Da 7:13", ["Daniel 7:13"]],
 ];
 
 let fail = 0;

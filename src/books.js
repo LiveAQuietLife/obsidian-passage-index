@@ -34,11 +34,11 @@ const BIBLE = [
   [20, "Proverbs", "Proverbs", "Prov", "Pro", "Prv", "Pr"],
   [21, "Ecclesiastes", "Ecclesiastes", "Eccles", "Eccl", "Ecc", "Qoh", "Qoheleth"],
   [22, "Song of Solomon", "Song of Solomon", "Song of Songs", "Song", "Song of Sol", "Canticles", "Cant", "SoS", "Sg"],
-  [23, "Isaiah", "Isaiah", "Isa", "Is"],
+  [23, "Isaiah", "Isaiah", "Isa", { alias: "Is", verseOnly: true }],
   [24, "Jeremiah", "Jeremiah", "Jer", "Je", "Jr"],
   [25, "Lamentations", "Lamentations", "Lam", "La"],
   [26, "Ezekiel", "Ezekiel", "Ezek", "Eze", "Ezk"],
-  [27, "Daniel", "Daniel", "Dan", "Da", "Dn"],
+  [27, "Daniel", "Daniel", "Dan", { alias: "Da", verseOnly: true }, "Dn"],
   [28, "Hosea", "Hosea", "Hos", "Ho"],
   [29, "Joel", "Joel", "Jl"],
   [30, "Amos", "Amos", { alias: "Am", verseOnly: true }],
@@ -77,7 +77,7 @@ const BIBLE = [
   [63, "2 John", { num: 2, names: ["John", "Jn", "Jhn"] }],
   [64, "3 John", { num: 3, names: ["John", "Jn", "Jhn"] }],
   [65, "Jude", "Jude", "Jud"],
-  [66, "Revelation", "Revelation", "Rev", "Re", "Apoc", "Apocalypse"],
+  [66, "Revelation", "Revelation", "Rev", { alias: "Re", verseOnly: true }, "Apoc", "Apocalypse"],
 ];
 
 // Extra-biblical texts (chapter:verse forms only in version 1).
