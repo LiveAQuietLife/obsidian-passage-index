@@ -41,8 +41,11 @@ const plainLinks = (s) => s.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2").replac
 
 // "(quotes; France 2002, 445)" -> relation "quotes", citation "France 2002, 445".
 // "(DBI, 769)" -> relation unspecified, citation "DBI, 769".
+// Read after the indexed reference (its column), not the first match of its text: the same
+// text can appear earlier, e.g. in a masked link target (bug 3).
 function readLine(lineText, ref) {
-  const after = lineText.slice(lineText.indexOf(ref.text) + ref.text.length);
+  const at = ref.col >= 0 && lineText.startsWith(ref.text, ref.col) ? ref.col : lineText.indexOf(ref.text);
+  const after = lineText.slice(at + ref.text.length);
   let relation = "unspecified", citation = "", description = "";
   const parens = [...after.matchAll(/\(((?:\[\[[^\]]*\]\]|[^()])*)\)/g)].map((m) => m[1]);
   const first = parens[0];
