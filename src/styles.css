@@ -261,6 +261,18 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
   position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%;
   background: var(--text-normal);
 }
+/* "Also cited with" (Map): chips for the other chapters the same notes cite. */
+.passage-index .pi-also-head { margin-top: 14px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border); }
+.passage-index .pi-also { display: flex; flex-wrap: wrap; gap: 4px; }
+.passage-index .pi-also-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 1px 4px 1px 7px; cursor: pointer;
+  border: 1px solid var(--background-modifier-border); border-radius: 10px; font-size: var(--font-ui-smaller);
+}
+.passage-index .pi-also-chip:hover { border-color: var(--text-muted); }
+.passage-index .pi-also-chip.is-selected { border-color: var(--interactive-accent); background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.15); }
+.passage-index .pi-also-n { min-width: 16px; text-align: center; padding: 0 4px; border-radius: 8px; background: var(--background-modifier-border); color: var(--text-muted); }
+.passage-index .pi-also-more { padding-right: 7px; color: var(--text-muted); }
+.passage-index .pi-also-refs { color: var(--text-muted); font-size: var(--font-ui-smaller); margin-top: 1px; }
 .passage-index .pi-map-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; color: var(--text-faint); font-size: var(--font-ui-smaller); }
 .passage-index .pi-map-key { display: inline-flex; align-items: center; gap: 4px; }
 .passage-index .pi-map-swatch { position: relative; display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--background-modifier-border); }
@@ -270,3 +282,46 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 
 /* Usage tags (pop-up, sections) in the Translations tab. */
 .setting-item-name .pi-tag { margin-left: 6px; font-size: var(--font-ui-smaller); padding: 0 5px; border-radius: 6px; background: var(--background-modifier-border); color: var(--text-muted); }
+
+/* Trail (under the pane's title): Revelation 1v7-8 › Rider on the Clouds Motif › Psalms 68:4 */
+.passage-index .pi-trail { display: flex; align-items: flex-start; gap: 4px; margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--background-modifier-border); font-size: var(--font-ui-smaller); }
+.passage-index .pi-trail-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 2px; min-width: 0; flex: 1 1 auto; }
+.passage-index .pi-crumb {
+  max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 4px; border-radius: var(--radius-s); color: var(--text-accent); font-style: italic; cursor: pointer;
+}
+.passage-index .pi-crumb:hover { color: var(--text-accent-hover); background: var(--background-modifier-hover); }
+.passage-index .pi-crumb.is-current { color: var(--text-accent); font-weight: var(--font-semibold); cursor: default; background: hsla(var(--interactive-accent-hsl), 0.15); }
+.passage-index .pi-crumb-sep { color: var(--text-faint); }
+.passage-index .pi-trail-tools { display: flex; gap: 0; flex-shrink: 0; }
+.passage-index .pi-trail-tools .clickable-icon { padding: 2px; }
+.passage-index .pi-trail-tools svg { width: 13px; height: 13px; }
+
+/* "Start a note" in an empty passage group, and its window. */
+.passage-index .pi-start-note { color: var(--text-accent); }
+.pi-start-modal .pi-start-check { margin: 4px 0 8px; }
+.pi-start-modal .pi-start-check .mod-warning { margin-top: 4px; }
+.pi-start-modal .pi-start-preview-label { color: var(--text-muted); font-size: var(--font-ui-smaller); margin-bottom: 2px; }
+.pi-start-modal .pi-start-preview pre { margin: 0 0 6px; padding: 6px 10px; border-radius: var(--radius-s); background: var(--background-secondary); white-space: pre-wrap; font-size: var(--font-ui-smaller); }
+.pi-start-modal .pi-start-name { width: 100%; }
+.pi-start-modal .pi-rabbit-why { width: 100%; }
+
+/* Rabbit trails section (saved passages to come back to), above Intertexts. */
+.passage-index .pi-rabbit > summary .pi-passage { font-weight: var(--font-semibold); color: var(--text-accent); }
+.passage-index .pi-rabbit-row .pi-name { font-style: italic; }
+.passage-index .pi-tag.pi-from-here { color: var(--text-accent); }
+
+/* Rabbit trails tab: count on the tab, a bar (total · order · open the note), book headings. */
+.passage-index .pi-tab-count { margin-left: 4px; padding: 0 5px; border-radius: 8px; font-size: 0.85em; background: hsla(var(--interactive-accent-hsl), 0.15); color: var(--text-accent); }
+.passage-index .pi-rabbit-bar { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.passage-index .pi-rabbit-total { flex: 1 1 auto; }
+.passage-index .pi-rabbit-order { padding: 0 5px; border-radius: var(--radius-s); cursor: pointer; }
+.passage-index .pi-rabbit-order:hover { background: var(--background-modifier-hover); }
+.passage-index .pi-rabbit-order.is-active { color: var(--text-normal); background: var(--background-modifier-border); cursor: default; }
+.passage-index .pi-rabbit-open { padding: 2px; }
+.passage-index .pi-rabbit-open svg { width: 14px; height: 14px; }
+.passage-index .pi-rabbit-book:first-child { margin-top: 2px; }
+
+/* Gaps tab: cited passages with no note of their own. */
+.passage-index .pi-gaps-book { font-size: var(--font-ui-smaller); height: auto; padding-top: 1px; padding-bottom: 1px; max-width: 55%; }
+.passage-index .pi-gap > summary .pi-tag { margin-left: 6px; }

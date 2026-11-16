@@ -1,12 +1,12 @@
 // Passage Index — Obsidian plugin entry point.
-import { Plugin, ItemView, PluginSettingTab, Setting, TFile, TFolder, MarkdownView, Menu, Modal, MarkdownRenderChild, Notice, setIcon, requestUrl, normalizePath, editorLivePreviewField } from "obsidian";
+import { Plugin, ItemView, PluginSettingTab, Setting, TFile, TFolder, MarkdownView, Menu, Modal, MarkdownRenderChild, Notice, setIcon, requestUrl, normalizePath, editorLivePreviewField, AbstractInputSuggest } from "obsidian";
 import { StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { createReader, format } from "./reader.js";
 import { PassageIndex, sortTopics, INTERTEXT_HEADINGS } from "./passage-index.js";
 import { passageText, trimBible, sectionOf, translationInfo, downloadUrl, TRANSLATIONS, LICENSES } from "./bible.js";
 import { BOOKS } from "./books.js";
-import { coverage, marks, level } from "./coverage.js";
+import { coverage, alsoCited, marks, level } from "./coverage.js";
 import { planBible, DEFAULT_OPTIONS as WIZARD_DEFAULTS } from "./wizard.js";
 
 // Verse numbers in Bible chapter notes, Live Preview. The notes keep "###### 3" lines (so
@@ -26,7 +26,7 @@ function verseNumberExtension(plugin) {
     if (style !== "margin" && style !== "inline") return Decoration.none;
     if (editorLivePreviewField && !view.state.field(editorLivePreviewField, false)) return Decoration.none; // source mode
     const doc = view.state.doc;
-    if (!/^---\n[\s\S]*?bible-chapter[\s\S]*?\n---/.test(doc.sliceString(0, Math.min(doc.length, 1000)))) return Decoration.none;
+    if (!/^---\r?\n[\s\S]*?bible-chapter[\s\S]*?\r?\n---/.test(doc.sliceString(0, Math.min(doc.length, 1000)))) return Decoration.none;
     const sel = view.state.selection.main;
     const ranges = [];
     for (const { from, to } of view.visibleRanges) {
@@ -98,6 +98,16 @@ const DEFAULTS = {
   sectionsFrom: "",
   // The pane's last tab: "index" or "map".
   paneTab: "index",
+  // Trail: where notes opened from the pane go while a trail runs. "new" = a new tab each
+  // time (as before trails); "reuse" = one trail tab, reused, so Obsidian's Back works in it.
+  trailTabs: "new",
+  // Rabbit trails: passages saved to come back to, one line each in this note. The pane shows
+  // them again in notes that touch the passage. The note is made on the first save.
+  rabbitTrails: "Rabbit trails.md",
+  // The Rabbit trails tab's order: "newest" (first) or "bible".
+  rabbitOrder: "newest",
+  // The Gaps tab's order: "cited" (most notes first) or "bible".
+  gapsOrder: "cited",
 };
 
 // "Open in…": a passage in an outside Bible tool. Logos goes through ref.ly, which opens the
@@ -152,7 +162,9 @@ const flashField = StateField.define({
 
 class PassageIndexPlugin extends Plugin {
   async onload() {
-    this.settings = Object.assign({}, DEFAULTS, await this.loadData());
+    // A deep copy, so changing a setting's list (e.g. the wizard adding an excluded folder)
+    // never changes DEFAULTS.
+    this.settings = Object.assign(structuredClone(DEFAULTS), await this.loadData());
     this.reader = createReader();
     this.index = new PassageIndex(this.reader, this.settings);
     this.ready = false;
@@ -209,10 +221,20 @@ class PassageIndexPlugin extends Plugin {
       this.registerEvent(this.app.vault.on("create", (f) => this.queue(f)));
       this.registerEvent(this.app.metadataCache.on("changed", (f) => this.queue(f)));
       this.registerEvent(this.app.vault.on("delete", (f) => { this.index.remove(f.path); this.refreshViews(); }));
-      this.registerEvent(this.app.vault.on("rename", (f, oldPath) => { this.index.remove(oldPath); this.queue(f); }));
+      this.registerEvent(this.app.vault.on("rename", (f, oldPath) => {
+        this.index.remove(oldPath);
+        this.queue(f);
+        for (const s of this.trail?.steps || []) if (s.kind === "note" && s.path === oldPath) s.path = f.path;
+        if (this.rabbitPath() === oldPath) { this.settings.rabbitTrails = f.path; this.saveSettings(); }
+      }));
       this.buildIndex();
       this.syncSearchExclusions().catch((e) => console.warn("Passage Index: couldn't update Excluded files:", e));
     });
+    // While a trail runs, every note opened (from the pane, a link, a tab) is a step. Before
+    // the refresh, so the pane draws the new step.
+    this.registerEvent(this.app.workspace.on("file-open", (file) => {
+      if (this.trail && file instanceof TFile && file.extension === "md") this.trailAdd({ kind: "note", path: file.path });
+    }));
     this.registerEvent(this.app.workspace.on("file-open", () => this.refreshViews()));
     // Verse-number style for wizard chapter notes, as a class on <body> (styles.css), also in
     // pop-out windows.
@@ -254,8 +276,10 @@ class PassageIndexPlugin extends Plugin {
     return !!this.excludedBy(path);
   }
 
-  // The excluded folder a path is in (as written in settings), or undefined.
+  // The excluded folder a path is in (as written in settings), or undefined. The rabbit-trails
+  // note is always read, wherever it is (it's chosen in settings; e.g. a support folder).
   excludedBy(path) {
+    if (path === this.rabbitPath()) return undefined;
     return this.settings.excludedFolders.find((f) => f && (path === f || path.startsWith(f.replace(/\/$/, "") + "/")));
   }
 
@@ -410,12 +434,213 @@ class PassageIndexPlugin extends Plugin {
 
   // Open a result in a new tab and jump to the line, without covering the note being read.
   // Then highlight the reference for a few seconds.
+  // Opening a result also starts a trail (from the note being read), or adds to the running one.
   async openResult(path, line, col, refText, where = "tab") {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return;
-    const leaf = where === "split" ? this.app.workspace.getLeaf("split", "vertical") : this.app.workspace.getLeaf("tab");
+    this.trailStart();
+    let leaf;
+    if (where === "split") leaf = this.app.workspace.getLeaf("split", "vertical");
+    else if (this.settings.trailTabs === "reuse" && this.trailLeafOpen()) leaf = this.trailLeaf;
+    else leaf = this.app.workspace.getLeaf("tab");
+    if (where !== "split" && this.settings.trailTabs === "reuse") this.trailLeaf = leaf;
     await leaf.openFile(file, line >= 0 ? { eState: { line } } : {});
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    // Remember where in the note, so going back to this step lands on the same line.
+    const step = this.trail?.steps.find((s) => s.kind === "note" && s.path === path);
+    if (step && line >= 0) Object.assign(step, { line, col, refText });
     this.showRef(leaf.view, line, col, refText);
+  }
+
+  // ---- Trail ----------------------------------------------------------------------------
+  // The path from the note you started on, through the notes you opened, to where you are.
+  // this.trail = { steps: [{ kind: "note", path, line?, col?, refText? }], at }
+  // `at` is the step being shown. Kept in memory only (gone after a restart).
+  // Opening something new while back at an earlier step drops the steps after it (like a
+  // browser's Back); opening a note that's already a step moves there instead.
+
+  trailStart() {
+    if (this.trail) return;
+    const f = this.app.workspace.getActiveFile();
+    this.trail = { steps: f ? [{ kind: "note", path: f.path }] : [], at: f ? 0 : -1 };
+  }
+
+  trailAdd(step) {
+    const t = this.trail;
+    if (!t) return;
+    const j = t.steps.findIndex((s) => s.path === step.path);
+    if (j >= 0) { t.at = j; return; }
+    t.steps = t.steps.slice(0, t.at + 1);
+    t.steps.push(step);
+    t.at = t.steps.length - 1;
+  }
+
+  trailCurrent() {
+    return this.trail ? this.trail.steps[this.trail.at] || null : null;
+  }
+
+  trailEnd() {
+    this.trail = null;
+    this.trailLeaf = null;
+    this.refreshViews();
+  }
+
+  trailLeafOpen() {
+    const l = this.trailLeaf;
+    return !!(l && this.app.workspace.getLeavesOfType("markdown").includes(l));
+  }
+
+  // Go back (or forward) to step j: the note's open tab comes to the front, or the note
+  // opens again at the remembered line.
+  async trailGo(j) {
+    const t = this.trail;
+    const s = t?.steps[j];
+    if (!s) return;
+    t.at = j;
+    const file = this.app.vault.getAbstractFileByPath(s.path);
+    if (!(file instanceof TFile)) { new Notice(`Passage Index: ${s.path} no longer exists.`); this.refreshViews(); return; }
+    const leaf = (this.settings.trailTabs === "reuse" && this.trailLeafOpen() && this.trailLeaf.view.file?.path === s.path ? this.trailLeaf : null)
+      || this.app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === s.path);
+    if (leaf) this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    else await this.openResult(s.path, s.line ?? -1, s.col ?? 0, s.refText);
+    this.refreshViews();
+  }
+
+  // "Start a note" on a passage with no note of its own: asks for a name and folder, then
+  // makes a plain note whose body holds the trail that led here (no properties, no
+  // template: add your own). The new note opens and becomes the next step of the trail.
+  startNote(ref, fromFile) {
+    if (fromFile) this.trailStart();
+    new StartNoteModal(this.app, this, ref, fromFile).open();
+  }
+
+  // A suggested folder for a new note on `ref`: where notes about the same book already are
+  // (the folder used most), else the last folder used, else Obsidian's new-note location.
+  noteFolderFor(ref, fromFile) {
+    const count = new Map();
+    for (const e of this.index.files.values()) {
+      if (!e.main.some((m) => m.book === ref.book)) continue;
+      const dir = e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : "";
+      count.set(dir, (count.get(dir) || 0) + 1);
+    }
+    const best = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (best) return best[0];
+    if (this.lastNoteFolder != null) return this.lastNoteFolder;
+    const parent = this.app.fileManager.getNewFileParent(fromFile?.path || "").path;
+    return parent === "/" ? "" : parent;
+  }
+
+  async createStartedNote(path, body) {
+    const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    if (dir && !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)) await this.app.vault.createFolder(dir);
+    const file = await this.app.vault.create(path, body);
+    this.lastNoteFolder = dir;
+    await this.openResult(file.path, -1);
+    // Cursor at the end, under the trail, ready for a template or writing.
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view?.file === file && view.editor) {
+      const last = view.editor.lastLine();
+      view.editor.setCursor({ line: last, ch: view.editor.getLine(last).length });
+    }
+    return file;
+  }
+
+  // ---- Rabbit trails ---------------------------------------------------------------------
+  // A passage to come back to, saved as one line in one note (setting `rabbitTrails`):
+  //   - Daniel 7:13 — why John joins it to Zech 12:10 (from [[Revelation 1v7-8]], 2026-11-14)
+  // Plain text, so PI reads it like any note: the pane shows the line again in notes that touch
+  // Daniel 7:13 (and in the note it was saved from). Delete the line when you're done with it.
+
+  rabbitPath() {
+    const p = normalizePath((this.settings.rabbitTrails || "").trim() || DEFAULTS.rabbitTrails);
+    return /\.md$/i.test(p) ? p : `${p}.md`;
+  }
+
+  // A new rabbit-trails note from settings: read it (even in an excluded folder), and re-check
+  // the old one (dropped from the index if it's in an excluded folder).
+  async setRabbitPath(v) {
+    const old = this.rabbitPath();
+    this.settings.rabbitTrails = (v || "").trim() || DEFAULTS.rabbitTrails;
+    await this.saveSettings();
+    for (const p of new Set([old, this.rabbitPath()])) {
+      const f = this.app.vault.getAbstractFileByPath(p);
+      if (f instanceof TFile) await this.indexFile(f);
+    }
+    this.refreshViews();
+  }
+
+  saveRabbitTrail(ref, fromFile) {
+    new RabbitTrailModal(this.app, this, ref, fromFile).open();
+  }
+
+  // Adds a line at the end of the rabbit-trails note (making the note, and its folder, if needed).
+  async appendRabbitTrail(line) {
+    const path = this.rabbitPath();
+    const f = this.app.vault.getAbstractFileByPath(path);
+    if (f instanceof TFile) {
+      await this.app.vault.process(f, (t) => `${t}${t && !t.endsWith("\n") ? "\n" : ""}${line}\n`);
+    } else {
+      const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      if (dir && !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)) await this.app.vault.createFolder(dir);
+      await this.app.vault.create(path, `${line}\n`);
+    }
+    new Notice(`Saved to ${path.split("/").pop().replace(/\.md$/, "")}`);
+  }
+
+  // Deletes one saved line (line number and its trimmed text, as the index holds them). If the
+  // note changed since, the line is found by its text; if it's gone, nothing is written.
+  async removeRabbitTrail(item) {
+    const f = this.app.vault.getAbstractFileByPath(item.path);
+    if (!(f instanceof TFile)) return;
+    let done = false;
+    await this.app.vault.process(f, (t) => {
+      const lines = t.split("\n");
+      const same = (i) => (lines[i] || "").trim().slice(0, 2000) === item.lineText;
+      const i = same(item.line) ? item.line : lines.findIndex((_, j) => same(j));
+      if (i < 0) return t;
+      lines.splice(i, 1);
+      done = true;
+      return lines.join("\n");
+    });
+    new Notice(done ? "Rabbit trail removed" : "Passage Index: that line has changed; nothing removed.");
+  }
+
+  // The saved lines to show in a note's pane: those whose passage it touches, and those saved
+  // from it (their "from" link points to it).
+  rabbitTrailsFor(file) {
+    const path = this.rabbitPath();
+    if (!file || file.path === path) return [];
+    const fromLines = [...this.rabbitFrom().entries()].filter(([, f]) => f === file).map(([line]) => line);
+    return this.index.parkedFor(file.path, path, fromLines);
+  }
+
+  // Where each saved line came from: line number → the note its last link points to. The
+  // "(from [[Note]], date)" part ends the line, so a link written in the "why" (before it)
+  // isn't taken for the source. Links come in note order, so a later one replaces an earlier.
+  rabbitFrom() {
+    const path = this.rabbitPath();
+    const pf = this.app.vault.getAbstractFileByPath(path);
+    const out = new Map();
+    if (!(pf instanceof TFile)) return out;
+    for (const l of this.app.metadataCache.getFileCache(pf)?.links || []) {
+      const line = l.position.start.line;
+      const f = this.app.metadataCache.getFirstLinkpathDest(l.link.split("#")[0], path);
+      if (f) out.set(line, f);
+    }
+    return out;
+  }
+
+  trailLabel(s) {
+    return s.path.split("/").pop().replace(/\.md$/, "");
+  }
+
+  // The trail as one line of links: [[A]] → [[B]] → [[C]]. upTo: the last step to include
+  // (default: all). Links are written for a note at sourcePath.
+  trailText(sourcePath = "", upTo = Infinity) {
+    return (this.trail?.steps || []).slice(0, upTo + 1).map((s) => {
+      const f = this.app.vault.getAbstractFileByPath(s.path);
+      return f instanceof TFile ? this.app.fileManager.generateMarkdownLink(f, sourcePath) : this.trailLabel(s);
+    }).join(" → ");
   }
 
   // Scroll a note's view to a reference and highlight it for a few seconds.
@@ -700,9 +925,9 @@ const MAP_ABBR = ["Gen", "Exod", "Lev", "Num", "Deut", "Josh", "Judg", "Ruth", "
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 // Mentions per book (for shading the book picker), one pass over the index.
-function bookTotals(index) {
+function bookTotals(index, skip = null) {
   const t = new Map();
-  for (const e of index.files.values()) for (const r of e.refs) t.set(r.book, (t.get(r.book) || 0) + 1);
+  for (const e of index.files.values()) if (e.path !== skip) for (const r of e.refs) t.set(r.book, (t.get(r.book) || 0) + 1);
   return t;
 }
 
@@ -735,7 +960,7 @@ function drawMap(el, plugin, state, opts) {
   }
 
   if (state.picking) {
-    const totals = bookTotals(index);
+    const totals = bookTotals(index, plugin.rabbitPath());
     for (const [label, from, to] of [["Old Testament", 1, 39], ["New Testament", 40, 66]]) {
       wrap.createDiv({ cls: "pi-map-label", text: label });
       const grid = wrap.createDiv({ cls: "pi-map-books" });
@@ -749,7 +974,8 @@ function drawMap(el, plugin, state, opts) {
     return;
   }
 
-  const cov = coverage(index, state.book, { broadChapters: plugin.settings.broadChapters || 2 });
+  // The rabbit-trails note is left out: a passage saved for later isn't studied yet.
+  const cov = coverage(index, state.book, { broadChapters: plugin.settings.broadChapters || 2, skip: plugin.rabbitPath() });
   if (!cov) { wrap.createDiv({ cls: "pi-empty", text: `No map for ${name || "this book"} (Bible books only).` }); return; }
   const mine = opts.file ? marks(index.files.get(opts.file.path)?.main || [], state.book) : { chapters: new Set(), verses: new Set() };
   const bookName = BOOK_NAME[state.book];
@@ -790,25 +1016,70 @@ function drawMap(el, plugin, state, opts) {
   // The notes: for the selected verse, or the whole-chapter mentions when none is selected.
   const v = state.verse ? ch.verse[state.verse - 1] : null;
   const notes = v ? v.notes : ch.chapterNotes;
-  if (!v && !notes.size) { wrap.createDiv({ cls: "pi-none", text: "Click a verse to list its notes." }); return; }
-  wrap.createDiv({ cls: "pi-map-label", text: v ? `${bookName} ${ch.c}:${v.v} — ${plural(notes.size, "note")}` : `Whole-chapter mentions — ${plural(notes.size, "note")}` });
-  const list = wrap.createDiv({ cls: "pi-list" });
-  const sorted = [...notes.values()].sort((a, b) => (b.count - a.count) || a.path.localeCompare(b.path));
-  if (!sorted.length) list.createDiv({ cls: "pi-none", text: "No notes." });
-  for (const n of sorted) {
-    const item = list.createDiv({ cls: "pi-item" + (opts.file?.path === n.path ? " is-about" : "") });
-    const top = item.createDiv({ cls: "pi-item-top" });
-    top.createSpan({ cls: "pi-name", text: n.path.split("/").pop().replace(/\.md$/, "") });
-    const meta = top.createSpan({ cls: "pi-meta" });
-    if (plugin.isTopic(n.path)) meta.createSpan({ cls: "pi-tag pi-topic", text: "topic" });
-    if (n.count > 1) meta.createSpan({ cls: "pi-tag", text: `×${n.count}` });
-    meta.createSpan({ cls: "pi-folder", text: n.path.includes("/") ? n.path.split("/")[0] : "/" });
-    item.addEventListener("click", () => plugin.openResult(n.path, n.line, n.col, n.refText));
-    item.addEventListener("mouseover", (event) => {
-      plugin.app.workspace.trigger("hover-link", { event, source: VIEW_TYPE, hoverParent: opts.hoverParent, targetEl: item,
-        linktext: n.path, sourcePath: opts.file?.path || "", state: n.line >= 0 ? { scroll: n.line } : undefined });
-    });
+  if (!v && !notes.size) wrap.createDiv({ cls: "pi-none", text: "Click a verse to list its notes." });
+  else {
+    wrap.createDiv({ cls: "pi-map-label", text: v ? `${bookName} ${ch.c}:${v.v} — ${plural(notes.size, "note")}` : `Whole-chapter mentions — ${plural(notes.size, "note")}` });
+    const list = wrap.createDiv({ cls: "pi-list" });
+    const sorted = [...notes.values()].sort((a, b) => (b.count - a.count) || a.path.localeCompare(b.path));
+    if (!sorted.length) list.createDiv({ cls: "pi-none", text: "No notes." });
+    for (const n of sorted) mapNoteItem(list, plugin, opts, n, n.count > 1 ? `×${n.count}` : null);
   }
+  drawAlsoCited(wrap, plugin, state, opts, { book: state.book, c: ch.c, v: v ? v.v : null });
+}
+
+const mapAbbr = (book) => MAP_ABBR[book - 1] || BOOK_NAME[book] || `Book ${book}`;
+
+// One note row in the Map (click opens it at the reference; hover previews it).
+function mapNoteItem(list, plugin, opts, n, tag, sub) {
+  const item = list.createDiv({ cls: "pi-item" + (opts.file?.path === n.path ? " is-about" : "") });
+  const top = item.createDiv({ cls: "pi-item-top" });
+  top.createSpan({ cls: "pi-name", text: n.path.split("/").pop().replace(/\.md$/, "") });
+  const meta = top.createSpan({ cls: "pi-meta" });
+  if (plugin.isTopic(n.path)) meta.createSpan({ cls: "pi-tag pi-topic", text: "topic" });
+  if (tag) meta.createSpan({ cls: "pi-tag", text: tag });
+  meta.createSpan({ cls: "pi-folder", text: n.path.includes("/") ? n.path.split("/")[0] : "/" });
+  if (sub) item.createDiv({ cls: "pi-also-refs", text: sub });
+  item.addEventListener("click", () => plugin.openResult(n.path, n.line, n.col, n.refText));
+  item.addEventListener("mouseover", (event) => {
+    plugin.app.workspace.trigger("hover-link", { event, source: VIEW_TYPE, hoverParent: opts.hoverParent, targetEl: item,
+      linktext: n.path, sourcePath: opts.file?.path || "", state: n.line >= 0 ? { scroll: n.line } : undefined });
+  });
+}
+
+// "Also cited with": the other chapters the notes on this chapter / verse cite, as chips
+// ("Dan 7 · 2"). Click a chip for the notes behind it. state.also = { focus, key, all }.
+const ALSO_SHOWN = 12;
+function drawAlsoCited(wrap, plugin, state, opts, focus) {
+  const fkey = `${focus.book}:${focus.c}:${focus.v ?? ""}`;
+  if (state.also?.focus !== fkey) state.also = { focus: fkey, key: null, all: false };
+  const st = state.also;
+  const a = alsoCited(plugin.index, focus, { broadChapters: plugin.settings.broadChapters || 2, skip: plugin.rabbitPath() });
+  if (!a.notes) return;
+  const here = `${mapAbbr(focus.book)} ${focus.c}${focus.v ? `:${focus.v}` : ""}`;
+  const head = wrap.createDiv({ cls: "pi-map-label pi-also-head", text: `Notes on ${here} also cite` });
+  head.setAttr("aria-label", `Other chapters cited by the ${plural(a.notes, "note")} on ${here}. Number = how many of those notes.`);
+  if (!a.entries.length) { wrap.createDiv({ cls: "pi-none", text: `The ${plural(a.notes, "note")} on ${here} cite nothing else.` }); return; }
+  const chips = wrap.createDiv({ cls: "pi-also" });
+  const shown = st.all ? a.entries : a.entries.slice(0, ALSO_SHOWN);
+  for (const x of shown) {
+    const key = `${x.book}:${x.c}`;
+    const label = `${mapAbbr(x.book)} ${x.c}`;
+    const chip = chips.createSpan({ cls: "pi-also-chip" + (st.key === key ? " is-selected" : ""),
+      attr: { "aria-label": `${plural(x.notes.length, "note")} on ${here} also cite ${BOOK_NAME[x.book] || label} ${x.c}` } });
+    chip.createSpan({ text: label });
+    chip.createSpan({ cls: "pi-also-n", text: String(x.notes.length) });
+    chip.addEventListener("click", () => { st.key = st.key === key ? null : key; opts.rerender(); });
+    opts.wireVerse?.(chip, { label: `${BOOK_NAME[x.book] || label} ${x.c}`, ref: { book: x.book, bookName: BOOK_NAME[x.book], c1: x.c, v1: null, c2: x.c, v2: null } });
+  }
+  if (a.entries.length > ALSO_SHOWN) {
+    const more = chips.createSpan({ cls: "pi-also-chip pi-also-more", text: st.all ? "Fewer" : `+${a.entries.length - ALSO_SHOWN} more` });
+    more.addEventListener("click", () => { st.all = !st.all; opts.rerender(); });
+  }
+  const sel = st.key && a.entries.find((x) => `${x.book}:${x.c}` === st.key);
+  if (!sel) return;
+  wrap.createDiv({ cls: "pi-map-label", text: `${here} and ${mapAbbr(sel.book)} ${sel.c} — ${plural(sel.notes.length, "note")}` });
+  const list = wrap.createDiv({ cls: "pi-list" });
+  for (const n of sel.notes) mapNoteItem(list, plugin, opts, n, null, n.refs.join(", "));
 }
 
 function legend(wrap) {
@@ -921,6 +1192,9 @@ class PassagePane extends ItemView {
     if (!file || file.extension !== "md") { el.createDiv({ cls: "pi-empty", text: "Open a note to see related passages." }); return; }
 
     const groups = this.plugin.index.groupsFor(file.path);
+    // The rabbit-trails note has its own section, so it isn't listed under each passage too.
+    const rabbit = this.plugin.rabbitPath();
+    if (file.path !== rabbit) for (const g of groups) g.notes = g.notes.filter((n) => n.path !== rabbit);
     const head = el.createDiv({ cls: "pi-head" });
     const titleRow = head.createDiv({ cls: "pi-title-row" });
     titleRow.createDiv({ cls: "pi-title", text: file.basename });
@@ -931,12 +1205,16 @@ class PassagePane extends ItemView {
     else head.createDiv({ cls: "pi-sub", text: main.length ? `Main passage: ${main.join("; ")}` : "No main passage (topic note)" });
     const ignored = this.plugin.index.ignoredFor(file.path);
     if (ignored.length) head.createDiv({ cls: "pi-sub pi-ignored", text: `Ignoring: ${ignored.join("; ")}` });
+    this.renderTrail(head, file);
 
-    // Index | Map tabs (the last one used is remembered).
-    const tab = this.plugin.settings.paneTab === "map" ? "map" : "index";
+    // Index | Map | Rabbit trails tabs (the last one used is remembered).
+    const tab = ["map", "rabbit", "gaps"].includes(this.plugin.settings.paneTab) ? this.plugin.settings.paneTab : "index";
     const tabs = head.createDiv({ cls: "pi-tabs" });
-    for (const [id, text] of [["index", "Index"], ["map", "Map"]]) {
+    const nRabbit = this.plugin.index.parkedAll(this.plugin.rabbitPath()).length;
+    for (const [id, text] of [["index", "Index"], ["map", "Map"], ["rabbit", "Rabbit trails"], ["gaps", "Gaps"]]) {
       const t = tabs.createDiv({ cls: "pi-tab" + (tab === id ? " is-active" : ""), text });
+      if (id === "gaps") t.setAttr("aria-label", "Passages your notes cite that have no note of their own");
+      if (id === "rabbit" && nRabbit) t.createSpan({ cls: "pi-tab-count", text: String(nRabbit) });
       t.addEventListener("click", async () => {
         if (tab === id) { if (id === "map") { this.mapFile = null; this.render(); } return; }
         this.plugin.settings.paneTab = id;
@@ -945,6 +1223,8 @@ class PassagePane extends ItemView {
       });
     }
     if (tab === "map") { this.renderMap(el, file); return; }
+    if (tab === "rabbit") { this.renderRabbitTab(el, file); return; }
+    if (tab === "gaps") { this.renderGapsTab(el, file); return; }
 
     if (excludedBy) {
       const msg = el.createDiv({ cls: "pi-empty" });
@@ -960,13 +1240,14 @@ class PassagePane extends ItemView {
     const hideChapter = hideBroad && this.plugin.settings.hideChapter;
     const isHidden = (n) => (hideBroad && n.broad) || (hideChapter && n.chapterOnly);
 
+    this.renderRabbitTrails(el, file);
     this.renderIntertexts(el, file);
     this.renderTopics(el, file, isHidden);
 
     if (!groups.length) { el.createDiv({ cls: "pi-empty", text: "No scripture references in this note." }); return; }
 
-    // Collapse all / Expand all cover the Intertexts and Topics sections too.
-    const dets = [...el.querySelectorAll("details.pi-intertexts, details.pi-topics")];
+    // Collapse all / Expand all cover the Rabbit trails, Intertexts and Topics sections too.
+    const dets = [...el.querySelectorAll("details.pi-rabbit, details.pi-intertexts, details.pi-topics")];
     const setAll = (open, except) => { for (const d of dets) if (d !== except && !(except && d.contains(except))) d.open = open; };
     const tools = titleRow.createDiv({ cls: "pi-tools" });
     const btn = (icon, label, fn) => {
@@ -1022,20 +1303,13 @@ class PassagePane extends ItemView {
       });
 
       const list = det.createDiv({ cls: "pi-list" });
-      for (const n of g.notes) {
-        const item = list.createDiv({ cls: "pi-item" + (n.about ? " is-about" : "") });
-        const top = item.createDiv({ cls: "pi-item-top" });
-        top.createSpan({ cls: "pi-name", text: n.path.split("/").pop().replace(/\.md$/, "") });
-        const meta = top.createSpan({ cls: "pi-meta" });
-        if (n.about) meta.createSpan({ cls: "pi-tag pi-about", text: "about" });
-        if (this.plugin.isTopic(n.path)) meta.createSpan({ cls: "pi-tag pi-topic", text: "topic" });
-        meta.createSpan({ cls: `pi-tag pi-${n.match}`, text: n.matchLabel });
-        if (n.otherGroups) meta.createSpan({ cls: "pi-tag pi-multi", text: `+${n.otherGroups}`, attr: { "aria-label": `Also under ${n.otherGroups} other passage(s) in this note` } });
-        meta.createSpan({ cls: "pi-folder", text: n.path.includes("/") ? n.path.split("/")[0] : "/" });
-        this.previewLine(item, n);
-        this.wireItem(item, n, file);
+      for (const n of g.notes) this.renderNote(list, n, file);
+      if (!g.notes.length) {
+        const none = list.createDiv({ cls: "pi-none" });
+        none.appendText("No other notes yet. ");
+        const start = none.createEl("a", { cls: "pi-start-note", text: "Start a note", href: "#", attr: { "aria-label": `Start a note on ${g.label}` } });
+        start.addEventListener("click", (evt) => { evt.preventDefault(); this.plugin.startNote(g.ref, file); });
       }
-      if (!g.notes.length) list.createDiv({ cls: "pi-none", text: "No other notes." });
       if (hidden) {
         const more = list.createDiv({ cls: "pi-none pi-broad", text: `${hiddenText(nChapter, nBroad)} — show` });
         more.addEventListener("click", () => { this.hideBroad = false; this.render(); });
@@ -1084,14 +1358,74 @@ ${was}` : `Section: ${b.s.title}`);
         const name = BOOK_NAME[s.book] || "";
         const range = s.c1 === s.c2 ? `${s.c1}:${s.v1}–${s.v2}` : `${s.c1}:${s.v1}–${s.c2}:${s.v2}`;
         t.createSpan({ cls: "pi-section-range", text: ` ${name} ${range}` });
-        const n = b.groups.reduce((a, g) => a + g.notes.length, 0);
-        sum.createSpan({ cls: "pi-count", text: String(b.groups.length),
-          attr: { "aria-label": `${b.groups.length} passages in this section${n ? `, ${n} note${n === 1 ? "" : "s"}` : ""}` } });
+        const count = sum.createSpan({ cls: "pi-count", text: String(b.groups.length) });
         const inner = det.createDiv({ cls: "pi-section-list" });
         for (const g of b.groups) renderGroup(inner, g);
+        // After renderGroup, which drops the hidden (broad / chapter-only) matches. A note
+        // under several of the section's passages counts once.
+        const n = new Set(b.groups.flatMap((g) => g.notes.map((x) => x.path))).size;
+        count.setAttr("aria-label", `${b.groups.length} passages in this section${n ? `, ${plural(n, "note")}` : ""}`);
       }
     }
     if (this.plugin.lastBuild) el.createDiv({ cls: "pi-foot", text: `Index: ${this.plugin.lastBuild}` });
+  }
+
+  // One result row: name, tags, the line where the reference sits. file: the note being read
+  // (may be null in the passage view).
+  renderNote(list, n, file) {
+    const item = list.createDiv({ cls: "pi-item" + (n.about ? " is-about" : "") });
+    const top = item.createDiv({ cls: "pi-item-top" });
+    top.createSpan({ cls: "pi-name", text: n.path.split("/").pop().replace(/\.md$/, "") });
+    const meta = top.createSpan({ cls: "pi-meta" });
+    if (n.about) meta.createSpan({ cls: "pi-tag pi-about", text: "about" });
+    if (this.plugin.isTopic(n.path)) meta.createSpan({ cls: "pi-tag pi-topic", text: "topic" });
+    meta.createSpan({ cls: `pi-tag pi-${n.match}`, text: n.matchLabel });
+    if (n.otherGroups) meta.createSpan({ cls: "pi-tag pi-multi", text: `+${n.otherGroups}`, attr: { "aria-label": `Also under ${n.otherGroups} other passage(s) in this note` } });
+    meta.createSpan({ cls: "pi-folder", text: n.path.includes("/") ? n.path.split("/")[0] : "/" });
+    this.previewLine(item, n);
+    this.wireItem(item, n, file);
+  }
+
+  // The trail, under the title: Revelation 1v7-8 › Rider on the Clouds Motif › Psalms 68:4.
+  // Click a step to go back to it. Long trails fold in the middle (… lists the hidden steps).
+  // Tools: back to the start, copy the trail as links, end the trail.
+  renderTrail(head, file) {
+    const t = this.plugin.trail;
+    if (!t || !t.steps.length) return;
+    const bar = head.createDiv({ cls: "pi-trail" });
+    const crumbs = bar.createDiv({ cls: "pi-trail-steps" });
+    const n = t.steps.length;
+    // Up to 5 steps show; beyond that: the first, …, and the last three.
+    const shown = n <= 5 ? t.steps.map((_, j) => j) : [0, -1, n - 3, n - 2, n - 1];
+    shown.forEach((j, k) => {
+      if (k) crumbs.createSpan({ cls: "pi-crumb-sep", text: "›" });
+      if (j === -1) {
+        const hidden = t.steps.map((s, i) => ({ s, i })).slice(1, n - 3);
+        const more = crumbs.createSpan({ cls: "pi-crumb", text: "…", attr: { "aria-label": `${hidden.length} more steps` } });
+        more.addEventListener("click", (evt) => {
+          const menu = new Menu();
+          for (const { s, i } of hidden) menu.addItem((m) => m.setTitle(this.plugin.trailLabel(s)).setIcon("file-text")
+            .onClick(() => this.plugin.trailGo(i)));
+          menu.showAtMouseEvent(evt);
+        });
+        return;
+      }
+      const s = t.steps[j];
+      const label = this.plugin.trailLabel(s);
+      const c = crumbs.createSpan({ cls: "pi-crumb" + (j === t.at ? " is-current" : ""), text: label });
+      if (j !== t.at) c.addEventListener("click", () => this.plugin.trailGo(j));
+      c.addEventListener("mouseover", (event) => this.app.workspace.trigger("hover-link", {
+        event, source: VIEW_TYPE, hoverParent: this, targetEl: c, linktext: s.path, sourcePath: file?.path || "" }));
+    });
+    const tools = bar.createDiv({ cls: "pi-trail-tools" });
+    const tool = (icon, label, fn) => {
+      const b = tools.createDiv({ cls: "clickable-icon", attr: { "aria-label": label } });
+      setIcon(b, icon);
+      b.addEventListener("click", fn);
+    };
+    if (t.at !== 0) tool("undo-2", `Back to the start (${this.plugin.trailLabel(t.steps[0])})`, () => this.plugin.trailGo(0));
+    tool("copy", "Copy the trail as links", () => this.copy(this.plugin.trailText(file?.path || ""), "Trail copied"));
+    tool("x", "End the trail", () => this.plugin.trailEnd());
   }
 
   // Verse pop-up: Ctrl (Cmd on a Mac) + hover a passage label shows its text beside the
@@ -1292,7 +1626,7 @@ ${was}` : `Section: ${b.s.title}`);
     item.addEventListener("mouseover", (event) => {
       this.app.workspace.trigger("hover-link", {
         event, source: VIEW_TYPE, hoverParent: this, targetEl: item,
-        linktext: n.path, sourcePath: file.path,
+        linktext: n.path, sourcePath: file?.path || "",
         state: n.line >= 0 ? { scroll: n.line } : undefined,
       });
     });
@@ -1353,6 +1687,187 @@ ${was}` : `Section: ${b.s.title}`);
         text: `${nHidden} topic${nHidden > 1 ? "s" : ""} reached only by chapter mentions or broad matches hidden — show` });
       more.addEventListener("click", () => { this.hideBroad = false; this.render(); });
     }
+  }
+
+  // Rabbit trails: saved lines whose passage this note touches, or that were saved from it.
+  // Open by default (it's a reminder). Each row: the passage, then the rest of the line (the
+  // reason and where it came from). Click opens the rabbit-trails note at the line.
+  // Hidden when there are none.
+  renderRabbitTrails(el, file) {
+    const items = this.plugin.rabbitTrailsFor(file);
+    if (!items.length) return;
+    const det = el.createEl("details", { cls: "pi-group pi-rabbit" });
+    const remembered = this.openState.get(file.path) || {};
+    det.open = remembered["__rabbit"] ?? true;
+    det.addEventListener("toggle", () => {
+      const st = this.openState.get(file.path) || {};
+      st["__rabbit"] = det.open;
+      this.openState.set(file.path, st);
+    });
+    const sum = det.createEl("summary");
+    setIcon(sum.createSpan({ cls: "pi-chevron" }), "chevron-right");
+    sum.createSpan({ cls: "pi-passage", text: "Rabbit trails" });
+    sum.createSpan({ cls: "pi-count", text: String(items.length) });
+    const list = det.createDiv({ cls: "pi-list" });
+    const from = this.plugin.rabbitFrom();
+    for (const it of items) this.renderRabbitRow(list, it, file, { from: from.get(it.line) });
+  }
+
+  // The Rabbit trails tab: every saved line, newest first or in Bible order (with book
+  // headings). Lines that touch the note you're reading, or were saved from it, are tagged.
+  renderRabbitTab(el, file) {
+    const s = this.plugin.settings;
+    const path = this.plugin.rabbitPath();
+    const all = this.plugin.index.parkedAll(path);
+    const wrap = el.createDiv({ cls: "pi-rabbit-tab" });
+    if (!all.length) {
+      const msg = wrap.createDiv({ cls: "pi-empty" });
+      msg.appendText("No rabbit trails yet. In the Index tab, right-click a passage and choose “Save as a rabbit trail…” to keep it for later. ");
+      msg.appendText(`They're kept in ${path}.`);
+      return;
+    }
+    const from = this.plugin.rabbitFrom();
+    const here = new Set(this.plugin.rabbitTrailsFor(file).map((x) => x.line));
+    const bar = wrap.createDiv({ cls: "pi-rabbit-bar" });
+    bar.createSpan({ cls: "pi-rabbit-total", text: `${all.length} saved` });
+    const order = s.rabbitOrder === "bible" ? "bible" : "newest";
+    for (const [id, text] of [["newest", "Newest first"], ["bible", "Bible order"]]) {
+      const b = bar.createSpan({ cls: "pi-rabbit-order" + (order === id ? " is-active" : ""), text });
+      b.addEventListener("click", async () => {
+        if (order === id) return;
+        s.rabbitOrder = id;
+        await this.plugin.saveSettings();
+        this.render();
+      });
+    }
+    const open = bar.createSpan({ cls: "pi-rabbit-open clickable-icon", attr: { "aria-label": `Open ${path}` } });
+    setIcon(open, "file-text");
+    open.addEventListener("click", () => this.plugin.openResult(path, -1));
+
+    const items = order === "bible"
+      ? [...all].sort((a, b) => (a.ref.book - b.ref.book) || (lo(a.ref) - lo(b.ref)) || (hi(a.ref) - hi(b.ref)) || (a.line - b.line))
+      : [...all].reverse(); // new lines go at the end of the note
+    const list = wrap.createDiv({ cls: "pi-list" });
+    let book = null;
+    for (const it of items) {
+      if (order === "bible" && it.ref.book !== book) {
+        book = it.ref.book;
+        list.createDiv({ cls: "pi-map-label pi-rabbit-book", text: it.ref.bookName || BOOK_NAME[book] || "" });
+      }
+      const f = from.get(it.line);
+      this.renderRabbitRow(list, { ...it, fromHere: f === file }, file, { from: f, here: here.has(it.line) });
+    }
+  }
+
+  // The Gaps tab: passages your notes cite (verse references) that no note is about, most
+  // cited first or in Bible order, for the whole vault or one book. Each row opens to the
+  // notes that cite it, with "Start a note"; right-click for more. The list follows the index,
+  // so a row goes away once a note on it exists.
+  renderGapsTab(el, file) {
+    const s = this.plugin.settings;
+    const rabbit = this.plugin.rabbitPath();
+    const all = this.plugin.index.unwritten(rabbit);
+    const wrap = el.createDiv({ cls: "pi-gaps-tab" });
+    if (!all.length) { wrap.createDiv({ cls: "pi-empty", text: "Every verse your notes cite has a note of its own." }); return; }
+
+    const perBook = new Map();
+    for (const g of all) perBook.set(g.ref.book, (perBook.get(g.ref.book) || 0) + 1);
+    if (this.gapsBook && !perBook.has(this.gapsBook)) this.gapsBook = 0;
+    const rows = this.gapsBook ? all.filter((g) => g.ref.book === this.gapsBook) : all;
+
+    const bar = wrap.createDiv({ cls: "pi-rabbit-bar" });
+    const pick = bar.createEl("select", { cls: "dropdown pi-gaps-book" });
+    pick.createEl("option", { value: "0", text: `All books (${all.length})` });
+    for (const b of [...perBook.keys()].sort((a, b) => a - b)) {
+      pick.createEl("option", { value: String(b), text: `${BOOK_NAME[b] || mapAbbr(b)} (${perBook.get(b)})` });
+    }
+    pick.value = String(this.gapsBook || 0);
+    pick.addEventListener("change", () => { this.gapsBook = Number(pick.value); this.render(); });
+    bar.createSpan({ cls: "pi-rabbit-total" });
+    const order = s.gapsOrder === "bible" ? "bible" : "cited";
+    for (const [id, text] of [["cited", "Most cited"], ["bible", "Bible order"]]) {
+      const b = bar.createSpan({ cls: "pi-rabbit-order" + (order === id ? " is-active" : ""), text });
+      b.addEventListener("click", async () => {
+        if (order === id) return;
+        s.gapsOrder = id;
+        await this.plugin.saveSettings();
+        this.render();
+      });
+    }
+    wrap.createDiv({ cls: "pi-map-sum", text: `${plural(rows.length, "passage")} your notes cite with no note of their own` });
+
+    // Passages already saved as a rabbit trail are tagged.
+    const parked = this.plugin.index.parkedAll(rabbit);
+    const isParked = (ref) => parked.some((p) => p.ref.book === ref.book && lo(p.ref) <= hi(ref) && lo(ref) <= hi(p.ref));
+    const sorted = order === "bible"
+      ? [...rows].sort((a, b) => (a.ref.book - b.ref.book) || (lo(a.ref) - lo(b.ref)) || (hi(a.ref) - hi(b.ref)))
+      : rows;
+    if (!this.gapsOpen) this.gapsOpen = new Set();
+    const list = wrap.createDiv({ cls: "pi-gaps" });
+    let book = null;
+    for (const g of sorted) {
+      if (order === "bible" && !this.gapsBook && g.ref.book !== book) {
+        book = g.ref.book;
+        list.createDiv({ cls: "pi-map-label pi-rabbit-book", text: BOOK_NAME[book] || g.ref.bookName || "" });
+      }
+      const det = list.createEl("details", { cls: "pi-group pi-gap" });
+      det.open = this.gapsOpen.has(g.key);
+      det.addEventListener("toggle", () => { if (det.open) this.gapsOpen.add(g.key); else this.gapsOpen.delete(g.key); });
+      const sum = det.createEl("summary");
+      setIcon(sum.createSpan({ cls: "pi-chevron" }), "chevron-right");
+      const label = sum.createSpan({ cls: "pi-passage", text: g.passage });
+      this.wireVerse(label, { label: g.passage, ref: g.ref });
+      if (isParked(g.ref)) sum.createSpan({ cls: "pi-tag pi-from-here", text: "rabbit trail", attr: { "aria-label": "Saved as a rabbit trail" } });
+      sum.createSpan({ cls: "pi-count", text: String(g.notes.length), attr: { "aria-label": `Cited in ${plural(g.notes.length, "note")}` } });
+      sum.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        const menu = new Menu();
+        menu.addItem((i) => i.setTitle(`Start a note on ${g.passage}…`).setIcon("file-plus").onClick(() => this.plugin.startNote(g.ref, file)));
+        menu.addItem((i) => i.setTitle("Save as a rabbit trail…").setIcon("bookmark-plus").onClick(() => this.plugin.saveRabbitTrail(g.ref, file)));
+        menu.addSeparator();
+        menu.addItem((i) => i.setTitle("Copy reference").setIcon("copy").onClick(() => this.copy(g.passage, "Reference copied")));
+        menu.showAtMouseEvent(evt);
+      });
+      const inner = det.createDiv({ cls: "pi-list" });
+      for (const n of g.notes) mapNoteItem(inner, this.plugin, { file, hoverParent: this }, n, n.count > 1 ? `×${n.count}` : null);
+      const none = inner.createDiv({ cls: "pi-none" });
+      const start = none.createEl("a", { cls: "pi-start-note", text: "Start a note", href: "#", attr: { "aria-label": `Start a note on ${g.passage}` } });
+      start.addEventListener("click", (evt) => { evt.preventDefault(); this.plugin.startNote(g.ref, file); });
+    }
+  }
+
+  // One saved line: the passage, then the rest of the line (why, and where it came from).
+  // Click opens the rabbit-trails note at the line; right-click for more.
+  // opts: from (the note it was saved from, or undefined), here (touches the note being read).
+  renderRabbitRow(list, it, file, { from, here } = {}) {
+    const item = list.createDiv({ cls: "pi-item pi-rabbit-row" });
+    const top = item.createDiv({ cls: "pi-item-top" });
+    top.createSpan({ cls: "pi-name", text: it.passage });
+    const meta = top.createSpan({ cls: "pi-meta" });
+    if (it.fromHere) meta.createSpan({ cls: "pi-tag pi-from-here", text: "from here", attr: { "aria-label": "Saved while reading this note" } });
+    else if (here) meta.createSpan({ cls: "pi-tag pi-from-here", text: "this note", attr: { "aria-label": "The note you're reading cites this passage" } });
+    // The rest of the line: "— why (from [[Note]], date)", as plain text.
+    const at = it.lineCol >= 0 && it.lineText.startsWith(it.refText, it.lineCol) ? it.lineCol : it.lineText.indexOf(it.refText);
+    const rest = plainMarkdown(at >= 0 ? it.lineText.slice(at + it.refText.length) : it.lineText).replace(/^[\s—–:-]+/, "");
+    if (rest) item.createDiv({ cls: "pi-line", text: clip(rest, 160, false) });
+    item.addEventListener("click", () => this.plugin.openResult(it.path, it.line, it.col, it.refText));
+    item.addEventListener("mouseover", (event) => this.app.workspace.trigger("hover-link", {
+      event, source: VIEW_TYPE, hoverParent: this, targetEl: item, linktext: it.path, sourcePath: file?.path || "",
+      state: { scroll: it.line } }));
+    item.addEventListener("contextmenu", (evt) => {
+      evt.preventDefault();
+      const menu = new Menu();
+      menu.addItem((i) => i.setTitle("Open at this line").setIcon("file-text")
+        .onClick(() => this.plugin.openResult(it.path, it.line, it.col, it.refText)));
+      if (from && from !== file) menu.addItem((i) => i.setTitle(`Open “${from.basename}” (where it came from)`).setIcon("undo-2")
+        .onClick(() => this.plugin.openResult(from.path, -1)));
+      if (it.ref) menu.addItem((i) => i.setTitle(`Start a note on ${it.passage}…`).setIcon("file-plus")
+        .onClick(() => this.plugin.startNote(it.ref, from || file)));
+      menu.addItem((i) => i.setTitle("Copy this line").setIcon("copy").onClick(() => this.copy(it.lineText, "Line copied")));
+      menu.addSeparator();
+      menu.addItem((i) => i.setTitle("Remove (done with it)").setIcon("trash-2").onClick(() => this.plugin.removeRabbitTrail(it)));
+      menu.showAtMouseEvent(evt);
+    });
   }
 
   // Intertext Register: Uses / Used by / Open, above the passage groups. Hidden when empty.
@@ -1445,7 +1960,9 @@ ${was}` : `Section: ${b.s.title}`);
       menu.addItem((i) => i.setTitle(`Open “${name(n.path)}”`).setIcon("file-text")
         .onClick(() => this.plugin.openResult(n.path, -1)));
     }
-    if (homes.length) menu.addSeparator();
+    if (!homes.length) menu.addItem((i) => i.setTitle(`Start a note on ${g.label}…`).setIcon("file-plus").onClick(() => this.plugin.startNote(g.ref, file)));
+    menu.addItem((i) => i.setTitle("Save as a rabbit trail…").setIcon("bookmark-plus").onClick(() => this.plugin.saveRabbitTrail(g.ref, file)));
+    menu.addSeparator();
     if (addOpenIn(menu, this.plugin, g.ref)) menu.addSeparator();
 
     if (this.plugin.index.placesIn(file.path, g.ref).length) {
@@ -1483,12 +2000,12 @@ ${was}` : `Section: ${b.s.title}`);
     menu.addItem((i) => i.setTitle("Open to the right").setIcon("separator-vertical")
       .onClick(() => this.plugin.openResult(n.path, n.line, n.col, n.refText, "split")));
     menu.addSeparator();
-    if (f.path !== file.path) {
+    if (file && f.path !== file.path) {
       menu.addItem((i) => i.setTitle("Insert link at cursor").setIcon("link-2")
         .onClick(() => this.insertLink(f, file)));
     }
     menu.addItem((i) => i.setTitle("Copy link").setIcon("link")
-      .onClick(() => this.copy(this.app.fileManager.generateMarkdownLink(f, file.path), "Link copied")));
+      .onClick(() => this.copy(this.app.fileManager.generateMarkdownLink(f, file?.path || ""), "Link copied")));
     if (n.lineText) {
       menu.addItem((i) => i.setTitle("Copy this line").setIcon("copy")
         .onClick(() => this.copy(n.lineText, "Line copied")));
@@ -1759,6 +2276,213 @@ class BibleWizard extends Modal {
   }
 }
 
+// A note name Passage Index reads back as the passage: Psalms 68v4, Mark 14v62-15v1, Psalms 23.
+function noteNameFor(r) {
+  let s = `${r.bookName} ${r.c1}`;
+  if (r.v1 != null) s += `v${r.v1}`;
+  if (r.c2 !== r.c1) s += `-${r.c2}${r.v2 != null ? `v${r.v2}` : ""}`;
+  else if (r.v2 != null && r.v2 !== r.v1) s += `-${r.v2}`;
+  return s;
+}
+
+// Folder names as you type (Obsidian 1.4.10+; without it the field is plain text).
+const FolderSuggest = AbstractInputSuggest && class extends AbstractInputSuggest {
+  constructor(app, inputEl, onPick) { super(app, inputEl); this.inputEl = inputEl; this.onPick = onPick; }
+  getSuggestions(q) {
+    q = q.toLowerCase();
+    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof TFolder && f.path.toLowerCase().includes(q))
+      .sort((a, b) => a.path.localeCompare(b.path)).slice(0, 50);
+  }
+  renderSuggestion(f, el) { el.setText(f.path === "/" ? "/ (vault root)" : f.path); }
+  selectSuggestion(f) { this.inputEl.value = f.path === "/" ? "" : f.path; this.onPick?.(this.inputEl.value); this.close(); }
+};
+
+// Note paths as you type (the rabbit-trails setting).
+const FileSuggest = AbstractInputSuggest && class extends AbstractInputSuggest {
+  constructor(app, inputEl, onPick) { super(app, inputEl); this.inputEl = inputEl; this.onPick = onPick; }
+  getSuggestions(q) {
+    q = q.toLowerCase();
+    return this.app.vault.getMarkdownFiles().filter((f) => f.path.toLowerCase().includes(q))
+      .sort((a, b) => a.path.localeCompare(b.path)).slice(0, 50);
+  }
+  renderSuggestion(f, el) { el.setText(f.path); }
+  selectSuggestion(f) { this.inputEl.value = f.path; this.onPick?.(f.path); this.close(); }
+};
+
+const BAD_NAME = /[\\/:*?"<>|#^[\]]/;
+const trimSlashes = (s) => s.trim().replace(/^\/+|\/+$/g, "");
+
+// "Start a note on Psalms 68:4": name and folder (both editable), what the note will hold
+// (the trail as links), and Create. Nothing is written until Create.
+class StartNoteModal extends Modal {
+  constructor(app, plugin, ref, fromFile) {
+    super(app);
+    this.plugin = plugin;
+    this.ref = ref;
+    this.fromFile = fromFile;
+    this.name = noteNameFor(ref);
+    this.folder = plugin.noteFolderFor(ref, fromFile);
+  }
+
+  path() {
+    const name = this.name.trim().replace(/\.md$/i, "");
+    const dir = trimSlashes(this.folder);
+    return normalizePath(dir ? `${dir}/${name}.md` : `${name}.md`);
+  }
+
+  // The trail up to where you are, then the new passage: [[A]] → [[B]] → Psalms 68:4.
+  body(path) {
+    const t = this.plugin.trail;
+    let trail = t ? this.plugin.trailText(path, t.at) : "";
+    if (!trail && this.fromFile) trail = this.app.fileManager.generateMarkdownLink(this.fromFile, path);
+    return `Trail: ${trail ? `${trail} → ` : ""}${format(this.ref)}\n\n`;
+  }
+
+  onOpen() {
+    const label = format(this.ref);
+    this.titleEl.setText(`Start a note on ${label}`);
+    this.modalEl.addClass("pi-start-modal");
+    const el = this.contentEl;
+    let createBtn, openBtn;
+    const check = createDiv({ cls: "setting-item-description pi-start-check" });
+    const preview = createDiv({ cls: "pi-start-preview" });
+    const update = () => {
+      const name = this.name.trim();
+      check.empty();
+      preview.empty();
+      this.problem = null;
+      this.existing = null;
+      if (!name) this.problem = "Enter a name.";
+      else if (BAD_NAME.test(name)) this.problem = "A note name can't contain \\ / : * ? \" < > | # ^ [ ]";
+      if (!this.problem) {
+        const p = this.path();
+        const f = this.app.vault.getAbstractFileByPath(p);
+        if (f instanceof TFile) { this.existing = f; this.problem = `${p} already exists.`; }
+        const read = this.plugin.reader.parseName(name).filter((r) => r.start === 0).map(format);
+        check.createDiv({ text: read.length ? `Passage Index will read this note as being about ${read.join("; ")}.`
+          : `Passage Index won't find a passage in this name, so the note won't count as being about ${label}.` });
+        const dir = trimSlashes(this.folder);
+        if (dir && !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)) check.createDiv({ text: `The folder ${dir} doesn't exist yet; it will be created.` });
+        preview.createDiv({ cls: "pi-start-preview-label", text: "The new note will contain:" });
+        preview.createEl("pre", { text: this.body(p).trim() });
+      }
+      if (this.problem) check.createDiv({ cls: "mod-warning", text: this.problem });
+      createBtn?.setDisabled(!!this.problem);
+      openBtn?.buttonEl.toggle(!!this.existing);
+    };
+    new Setting(el).setName("Name").addText((t) => {
+      t.setValue(this.name).onChange((v) => { this.name = v; update(); });
+      t.inputEl.addClass("pi-start-name");
+      window.setTimeout(() => { t.inputEl.focus(); t.inputEl.select(); }, 0);
+      t.inputEl.addEventListener("keydown", (evt) => { if (evt.key === "Enter" && !this.problem) { evt.preventDefault(); this.create(); } });
+    });
+    new Setting(el).setName("Folder").setDesc("Suggested: where your notes on this book already are, or your folder for new notes.").addText((t) => {
+      t.setPlaceholder("(vault root)").setValue(this.folder).onChange((v) => { this.folder = v; update(); });
+      if (FolderSuggest) new FolderSuggest(this.app, t.inputEl, (v) => { this.folder = v; update(); });
+    });
+    el.appendChild(check);
+    el.appendChild(preview);
+    new Setting(el)
+      .addButton((b) => { openBtn = b; b.setButtonText("Open the existing note").onClick(async () => { const f = this.existing; this.close(); if (f) await this.plugin.openResult(f.path, -1); }); })
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) => { createBtn = b; b.setButtonText("Create").setCta().onClick(() => this.create()); });
+    update();
+  }
+
+  async create() {
+    if (this.problem || this.busy) return;
+    this.busy = true;
+    const p = this.path();
+    const body = this.body(p);
+    this.close();
+    try {
+      await this.plugin.createStartedNote(p, body);
+    } catch (e) {
+      console.error("Passage Index: couldn't create the note:", e);
+      new Notice(`Passage Index: couldn't create ${p}. ${e.message || ""}`);
+    }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// "Save as a rabbit trail": the passage (editable, so it can be narrowed or widened), a line
+// on why, and a preview of the line that goes into the rabbit-trails note. Nothing is written
+// until Save. You stay where you are.
+class RabbitTrailModal extends Modal {
+  constructor(app, plugin, ref, fromFile) {
+    super(app);
+    this.plugin = plugin;
+    this.passage = format(ref);
+    this.why = "";
+    this.fromFile = fromFile;
+  }
+
+  line() {
+    const d = new Date();
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const why = this.why.trim().replace(/\s+/g, " ");
+    const from = this.fromFile ? `from ${this.app.fileManager.generateMarkdownLink(this.fromFile, this.plugin.rabbitPath())}, ` : "";
+    return `- ${this.passage.trim()}${why ? ` — ${why}` : ""} (${from}${date})`;
+  }
+
+  onOpen() {
+    this.titleEl.setText("Save as a rabbit trail");
+    this.modalEl.addClass("pi-start-modal");
+    const el = this.contentEl;
+    const path = this.plugin.rabbitPath();
+    let saveBtn;
+    const check = createDiv({ cls: "setting-item-description pi-start-check" });
+    const preview = createDiv({ cls: "pi-start-preview" });
+    const update = () => {
+      check.empty();
+      preview.empty();
+      const r = this.plugin.reader.parse(this.passage.trim())[0];
+      this.problem = !this.passage.trim() ? "Enter a passage."
+        : !r || r.start !== 0 ? "Passage Index doesn't read a passage at the start of this, so the line wouldn't come back in the pane." : null;
+      if (this.problem) check.createDiv({ cls: "mod-warning", text: this.problem });
+      const exists = this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+      preview.createDiv({ cls: "pi-start-preview-label", text: exists ? `Adds this line to ${path}:` : `Creates ${path} with this line:` });
+      preview.createEl("pre", { text: this.line() });
+      saveBtn?.setDisabled(!!this.problem);
+    };
+    const enter = (input) => input.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" && !evt.isComposing) { evt.preventDefault(); this.save(); }
+    });
+    new Setting(el).setName("Passage").addText((t) => {
+      t.setValue(this.passage).onChange((v) => { this.passage = v; update(); });
+      enter(t.inputEl);
+    });
+    new Setting(el).setName("Why").setDesc("What caught your eye, in a line. Optional.").addText((t) => {
+      t.setPlaceholder("e.g. why does John join this to Zech 12:10?").onChange((v) => { this.why = v; update(); });
+      t.inputEl.addClass("pi-rabbit-why");
+      enter(t.inputEl);
+      window.setTimeout(() => t.inputEl.focus(), 0);
+    });
+    el.appendChild(check);
+    el.appendChild(preview);
+    new Setting(el)
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) => { saveBtn = b; b.setButtonText("Save").setCta().onClick(() => this.save()); });
+    update();
+  }
+
+  async save() {
+    if (this.problem || this.busy) return;
+    this.busy = true;
+    const line = this.line();
+    this.close();
+    try {
+      await this.plugin.appendRabbitTrail(line);
+    } catch (e) {
+      console.error("Passage Index: couldn't save the rabbit trail:", e);
+      new Notice(`Passage Index: couldn't save to ${this.plugin.rabbitPath()}. ${e.message || ""}`);
+    }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 class PassageIndexSettings extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; this.tab = "index"; }
 
@@ -1894,6 +2618,26 @@ class PassageIndexSettings extends PluginSettingTab {
         .addToggle((t) => t.setValue(s.hideChapter)
           .onChange(async (v) => { s.hideChapter = v; await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
     }
+    new Setting(el)
+      .setName("Trail: open notes in")
+      .setDesc("While a trail runs (it starts when you open a note from the pane, or follow a passage), where notes open. A new tab each time keeps every step side by side. One trail tab reuses a single tab, so there are fewer tabs and Obsidian's Back and Forward work in it; the note you started from stays in its own tab.")
+      .addDropdown((d) => d
+        .addOption("new", "A new tab for each note")
+        .addOption("reuse", "One trail tab, reused")
+        .setValue(this.plugin.settings.trailTabs || "new")
+        .onChange(async (v) => { this.plugin.settings.trailTabs = v; await this.plugin.saveSettings(); }));
+    new Setting(el)
+      .setName("Rabbit trails note")
+      .setDesc("Right-click a passage in the pane and choose \"Save as a rabbit trail…\" to note it for later. Each one is a line in this note (made on the first save): the passage, why, and the note you were in. The pane shows the line again in notes that touch that passage, and the Rabbit trails tab lists them all. Delete the line when you're done with it. This note is read even if it's in an excluded folder.")
+      .addText((t) => {
+        // Applied when you leave the field (or press Enter), not on every key: each change
+        // re-reads the old and new notes, and a half-typed path would briefly become the note.
+        t.setPlaceholder(DEFAULTS.rabbitTrails).setValue(this.plugin.settings.rabbitTrails || "");
+        t.inputEl.addEventListener("change", () => {
+          if (t.getValue().trim() !== (this.plugin.settings.rabbitTrails || "").trim()) this.plugin.setRabbitPath(t.getValue());
+        });
+        if (FileSuggest) new FileSuggest(this.app, t.inputEl, (v) => this.plugin.setRabbitPath(v));
+      });
     new Setting(el)
       .setName("Highlight duration")
       .setDesc("Seconds the reference stays highlighted after opening a result.")

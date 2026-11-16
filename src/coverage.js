@@ -93,7 +93,8 @@ function addNote(map, path, r) {
 // { book, chapters: [{ c, verses, mentions, chapterMentions, notes: Map, chapterNotes: Map,
 //   isMain, verse: [{ v, mentions, notes: Map, isMain }] }] } (arrays indexed from 0).
 // isMain: some note has this as (part of) its main passage. Notes maps: path → { count, line, … }.
-function coverage(index, book, { broadChapters = 2 } = {}) {
+// skip: a note path to leave out (the rabbit-trails note: saved passages aren't studied yet).
+function coverage(index, book, { broadChapters = 2, skip = null } = {}) {
   const n = chaptersIn(book);
   if (!n) return null;
   const chapters = [];
@@ -111,6 +112,7 @@ function coverage(index, book, { broadChapters = 2 } = {}) {
     }
   };
   for (const path of index.byBook.get(book) || []) {
+    if (path === skip) continue;
     const e = index.files.get(path);
     if (!e) continue;
     for (const r of e.refs) {
@@ -134,6 +136,65 @@ function coverage(index, book, { broadChapters = 2 } = {}) {
   return { book, chapters };
 }
 
+// A reference without its book: "7:13", "7:9–10", "2–3", "7", "1:9–2:3".
+function versePart(r) {
+  if (r.v1 == null) return r.c1 === r.c2 ? `${r.c1}` : `${r.c1}–${r.c2}`;
+  if (r.c1 === r.c2) return r.v2 == null || r.v2 === r.v1 ? `${r.c1}:${r.v1}` : `${r.c1}:${r.v1}–${r.v2}`;
+  return `${r.c1}:${r.v1}–${r.c2}${r.v2 == null ? "" : `:${r.v2}`}`;
+}
+
+// "Also cited with": the notes on a chapter or verse (focus = { book, c, v }, v null for the
+// whole chapter), and the other chapters those notes cite. Helps connect passages that the
+// same notes keep bringing together (Rev 1 with Dan 7).
+// - A note is "on" the focus if it cites it with a narrow reference (broad ones, more than
+//   broadChapters chapters, don't count). For a verse, a chapter-only "Rev 1" doesn't count.
+// - Its other narrow references count for each chapter they touch, except the focus chapter
+//   (so Rev 1:7 doesn't list Rev 1).
+// Returns { notes: n, entries: [{ book, c, notes: [{ path, line, col, refText, lineText,
+//   lineCol, refs: ["7:13", "7:9–10"] }] }] } (refs: the distinct ranges there, without the book), entries with most notes first, then Bible order; each
+// entry's notes by name. line/col: the note's first citation there (body before filename).
+function alsoCited(index, focus, { broadChapters = 2, skip = null } = {}) {
+  const narrow = (r) => r.c2 - r.c1 + 1 <= broadChapters;
+  const onFocus = (r) => {
+    if (r.book !== focus.book || r.c1 > focus.c || r.c2 < focus.c || !narrow(r)) return false;
+    if (focus.v == null) return true;
+    if (r.v1 == null) return false;
+    const from = r.c1 === focus.c ? r.v1 : 1;
+    const to = r.c2 === focus.c && r.v2 != null ? r.v2 : 999;
+    return from <= focus.v && focus.v <= to;
+  };
+  const byKey = new Map();
+  let total = 0;
+  for (const path of index.byBook.get(focus.book) || []) {
+    if (path === skip) continue;
+    const e = index.files.get(path);
+    if (!e || !e.refs.some(onFocus)) continue;
+    total++;
+    // Reading order, with the filename's main passage (line -1) last.
+    const refs = [...e.refs].sort((a, b) => ((a.line < 0) - (b.line < 0)) || (a.line - b.line) || ((a.col ?? 0) - (b.col ?? 0)));
+    for (const r of refs) {
+      if (!narrow(r)) continue;
+      for (let c = r.c1; c <= r.c2; c++) {
+        if (r.book === focus.book && c === focus.c) continue;
+        const key = `${r.book}:${c}`;
+        if (!byKey.has(key)) byKey.set(key, { book: r.book, c, notes: new Map() });
+        const notes = byKey.get(key).notes;
+        let n = notes.get(path);
+        if (!n) notes.set(path, (n = { path, line: r.line, col: r.col ?? 0, refText: r.text, lineText: r.lineText, lineCol: r.lineCol, ranges: new Map() }));
+        const rk = `${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
+        if (!n.ranges.has(rk)) n.ranges.set(rk, r);
+      }
+    }
+  }
+  const name = (p) => p.split("/").pop();
+  const entries = [...byKey.values()]
+    .map((x) => ({ ...x, notes: [...x.notes.values()].map(({ ranges, ...n }) => ({ ...n,
+      refs: [...ranges.values()].sort((a, b) => (a.c1 - b.c1) || ((a.v1 ?? 0) - (b.v1 ?? 0)) || ((a.v2 ?? 999) - (b.v2 ?? 999))).map(versePart) }))
+      .sort((a, b) => name(a.path).localeCompare(name(b.path))) }))
+    .sort((a, b) => (b.notes.length - a.notes.length) || (a.book - b.book) || (a.c - b.c));
+  return { notes: total, entries };
+}
+
 // Which chapters / verses of `book` the given refs cover (for outlining the current note).
 // Returns { chapters: Set(c), verses: Set("c:v") }.
 function marks(refs, book) {
@@ -151,4 +212,4 @@ function marks(refs, book) {
   return { chapters, verses };
 }
 
-export { coverage, marks, level, versesIn, chaptersIn };
+export { coverage, alsoCited, marks, level, versesIn, chaptersIn };

@@ -198,6 +198,114 @@ class PassageIndex {
     return this.files.get(path)?.ignored || [];
   }
 
+  // The notes citing a passage (any passage, not only one a note cites: the pane's passage
+  // view uses this too), each with its closest match. skipPath: a note to leave out.
+  // Returns [{ path, about, broad, match, matchLabel, line, col, lineText, lineCol,
+  //            chapterOnly, refText, more }], "about" notes first, then by match.
+  notesFor(ref, skipPath = null) {
+    const notes = [];
+    for (const other of this.byBook.get(ref.book) || []) {
+      if (other === skipPath) continue;
+      const oe = this.files.get(other);
+      let best = null, count = 0;
+      for (const r of oe.refs) {
+        if (!overlaps(ref, r)) continue;
+        count++;
+        const mt = matchType(ref, r);
+        // Prefer the best match type; among equals, prefer a body line over the filename.
+        if (!best || MATCH[mt].rank < MATCH[best.mt].rank ||
+            (MATCH[mt].rank === MATCH[best.mt].rank && best.r.line < 0 && r.line >= 0)) best = { mt, r };
+      }
+      if (!best) continue;
+      const about = oe.main.some((m) => overlaps(m, ref));
+      // Broad: even the best match spans many chapters ("Mark 1–8"). The pane can hide these.
+      const broad = best.mt !== "exact" && best.r.c2 - best.r.c1 + 1 > (this.opts.broadChapters || 2);
+      notes.push({
+        path: other, about, broad, match: best.mt, matchLabel: MATCH[best.mt].label,
+        line: best.r.line, col: best.r.col ?? 0, lineText: best.r.lineText, lineCol: best.r.lineCol,
+        chapterOnly: best.mt === "chapter", refText: best.r.text, more: count - 1,
+      });
+    }
+    return notes.sort((a, b) =>
+      (b.about - a.about) || (MATCH[a.match].rank - MATCH[b.match].rank) ||
+      a.path.localeCompare(b.path));
+  }
+
+  // Rabbit trails: lines of the rabbit-trails note (parkPath) whose saved passage touches a
+  // passage this note cites. Only the first reference on a line is the saved passage (later
+  // ones are the reason, or the "from" link). This note's broad references (more than
+  // broadChapters chapters) don't pull lines in. fromLines: line numbers to include anyway
+  // (lines saved from this note), marked fromHere.
+  // Returns [{ path, line, col, lineText, lineCol, refText, passage, fromHere }] in note order.
+  parkedFor(path, parkPath, fromLines = []) {
+    const e = this.files.get(path);
+    if (!e || path === parkPath) return [];
+    const wide = this.opts.broadChapters || 2;
+    const mine = e.refs.filter((r) => r.c2 - r.c1 + 1 <= wide);
+    const from = new Set(fromLines);
+    return this.parkedAll(parkPath)
+      .filter((x) => from.has(x.line) || mine.some((m) => overlaps(m, x.ref)))
+      .map((x) => ({ ...x, fromHere: from.has(x.line) }));
+  }
+
+  // Every saved line of the rabbit-trails note (any line with a reference; its first one is
+  // the saved passage), in note order.
+  // Returns [{ path, line, col, lineText, lineCol, refText, passage, ref }].
+  parkedAll(parkPath) {
+    const pe = this.files.get(parkPath);
+    if (!pe) return [];
+    const first = new Map();
+    for (const r of pe.refs) {
+      if (r.line < (pe.bodyStart || 0)) continue;
+      const f = first.get(r.line);
+      if (!f || r.col < f.col) first.set(r.line, r);
+    }
+    return [...first.values()].sort((a, b) => a.line - b.line)
+      .map((r) => ({ path: parkPath, line: r.line, col: r.col, lineText: r.lineText, lineCol: r.lineCol,
+        refText: r.text, passage: format(r), ref: { book: r.book, bookName: r.bookName, c1: r.c1, v1: r.v1, c2: r.c2, v2: r.v2 } }));
+  }
+
+  // The Gaps tab: verse references your notes cite that no note is about. "About" = some
+  // note's main passage overlaps it (Rev 1:7–9 counts as written if Revelation 1v7-8 exists).
+  // Left out: chapter-only references ("Daniel 2"), broad ones (more than broadChapters
+  // chapters), and the note at skipPath (the rabbit-trails note). One row per distinct range
+  // ("Dan 7:13" and "Dan 7:13–14" are two rows); spellings of the same range are merged.
+  // Returns [{ key, ref, passage, notes: [{ path, line, col, refText, lineText, lineCol, count }] }],
+  // cited by most notes first, then Bible order. Each row's notes by name.
+  unwritten(skipPath = null) {
+    const wide = this.opts.broadChapters || 2;
+    const mains = [];
+    for (const e of this.files.values()) if (e.path !== skipPath) mains.push(...e.main);
+    const written = (r) => mains.some((m) => overlaps(m, r));
+    const rows = new Map();
+    for (const e of this.files.values()) {
+      if (e.path === skipPath) continue;
+      for (const r of e.refs) {
+        if (r.v1 == null || r.c2 - r.c1 + 1 > wide) continue;
+        const key = `${r.book}:${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
+        let row = rows.get(key);
+        if (!row) {
+          if (written(r)) continue;
+          const ref = { book: r.book, bookName: r.bookName, c1: r.c1, v1: r.v1, c2: r.c2, v2: r.v2 };
+          rows.set(key, (row = { key, ref, passage: format(ref), notes: new Map() }));
+        }
+        const n = row.notes.get(e.path);
+        // The first place in the body (the filename's main passage, line -1, only if none).
+        if (!n) row.notes.set(e.path, { path: e.path, line: r.line, col: r.col ?? 0, refText: r.text, lineText: r.lineText, lineCol: r.lineCol, count: 1 });
+        else {
+          n.count++;
+          if ((n.line < 0 && r.line >= 0) || (r.line >= 0 && (r.line < n.line || (r.line === n.line && (r.col ?? 0) < n.col)))) {
+            Object.assign(n, { line: r.line, col: r.col ?? 0, refText: r.text, lineText: r.lineText, lineCol: r.lineCol });
+          }
+        }
+      }
+    }
+    const name = (p) => p.split("/").pop();
+    return [...rows.values()]
+      .map((x) => ({ ...x, notes: [...x.notes.values()].sort((a, b) => name(a.path).localeCompare(name(b.path))) }))
+      .sort((a, b) => (b.notes.length - a.notes.length) || (a.ref.book - b.ref.book) || (lo(a.ref) - lo(b.ref)) || (hi(a.ref) - hi(b.ref)));
+  }
+
   // Groups for the pane (design: Option C).
   // Returns [{ key, label, ref, isMain, open, notes: [{ path, about, match, matchLabel,
   //            line, lineText, refText, more, otherGroups }] }]
@@ -213,34 +321,7 @@ class PassageIndex {
       groups.push({ key: format(r), label: format(r), ref: r, isMain });
     }
 
-    for (const g of groups) {
-      const notes = new Map();
-      for (const other of this.byBook.get(g.ref.book) || []) {
-        if (other === path) continue;
-        const oe = this.files.get(other);
-        let best = null, count = 0;
-        for (const r of oe.refs) {
-          if (!overlaps(g.ref, r)) continue;
-          count++;
-          const mt = matchType(g.ref, r);
-          // Prefer the best match type; among equals, prefer a body line over the filename.
-          if (!best || MATCH[mt].rank < MATCH[best.mt].rank ||
-              (MATCH[mt].rank === MATCH[best.mt].rank && best.r.line < 0 && r.line >= 0)) best = { mt, r };
-        }
-        if (!best) continue;
-        const about = oe.main.some((m) => overlaps(m, g.ref));
-        // Broad: even the best match spans many chapters ("Mark 1–8"). The pane can hide these.
-        const broad = best.mt !== "exact" && best.r.c2 - best.r.c1 + 1 > (this.opts.broadChapters || 2);
-        notes.set(other, {
-          path: other, about, broad, match: best.mt, matchLabel: MATCH[best.mt].label,
-          line: best.r.line, col: best.r.col ?? 0, lineText: best.r.lineText, lineCol: best.r.lineCol,
-          chapterOnly: best.mt === "chapter", refText: best.r.text, more: count - 1,
-        });
-      }
-      g.notes = [...notes.values()].sort((a, b) =>
-        (b.about - a.about) || (MATCH[a.match].rank - MATCH[b.match].rank) ||
-        a.path.localeCompare(b.path));
-    }
+    for (const g of groups) g.notes = this.notesFor(g.ref, path);
 
     // Mark notes that appear under several passages.
     const seen = new Map();
