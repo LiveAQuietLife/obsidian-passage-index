@@ -35,7 +35,7 @@ The pane has four tabs: **Index**, **Map**, **Rabbit trails** and **Gaps**. The 
 - **Hold Ctrl** (Cmd on a Mac) and point at a passage heading to read the verses (see *Verse pop-up*).
 - A passage with no other notes says so, with **Start a note** (see below).
 
-![Passage groups opened, with results tagged about, exact, inside and chapter](images/pane-sidebar.jpg)
+![The pane for Revelation 1:7–8: the trail, the tabs, and passage groups with results tagged about, topic, exact, inside and contains](images/pane-sidebar.jpg)
 
 #### Right-click a result
 
@@ -61,6 +61,8 @@ Open a note from the pane and a trail starts: the note you were reading, then ea
 - Long trails fold in the middle; click **…** for the hidden steps.
 - The buttons at the end go back to the start, copy the trail as links (`[[A]] → [[B]] → [[C]]`), or end it.
 
+![A trail of three notes above the pane's tabs](images/trail.jpg)
+
 The trail is kept until you end it or restart Obsidian. Where the notes open is a setting: a new tab for each, or one trail tab that's reused.
 
 ### Start a note
@@ -74,6 +76,8 @@ Trail: [[Revelation 1v7-8]] → [[Rider on the Clouds Motif]] → Psalms 68:4
 ```
 
 The note opens with the cursor below that line and becomes the next step of the trail.
+
+![The Start a note window for Psalms 68:4, with the trail that led there](images/start-note.jpg)
 
 ### Rabbit trails
 
@@ -89,11 +93,13 @@ A passage you want to look into later, without leaving what you're reading. Righ
 
 The rabbit-trails note isn't listed under passages and isn't counted in the Map.
 
+![The Rabbit trails tab with a saved passage, tagged as saved from this note](images/rabbit-trails.jpg)
+
 ### Topics
 
 Lists topic notes that share a passage with the note you're reading, unlinked ones first, so you can see which topics you haven't linked yet. Which notes count as topics is set in the *Topics* tab.
 
-![Topic notes sharing Daniel 7 with the current note; a linked one is marked](images/topics.jpg)
+![Topic notes that share passages with the current note, and the passages they share](images/topics.jpg)
 
 ### Intertexts
 
@@ -142,6 +148,8 @@ A coverage map of the main passage's book: one square per chapter, shaded by how
 
 **Also cited with**, below a chapter's verses, lists the other chapters that notes on this chapter cite, most notes first: *Notes on Rev 1 also cite Dan 7 · 4, Zech 12 · 3 …* Select a verse and it narrows to notes citing that verse. Click a chapter to see the notes and the verses they cite there (`7:9, 7:13–14`); click a note to open it at the reference. Ctrl-hover a chapter to read it.
 
+![Revelation 1 in the Map tab: its verses, the chapters its notes also cite, and the notes citing Daniel 7](images/also-cited.jpg)
+
 The command **Insert coverage map** adds a live `pi-map` code block to a note:
 
 ````
@@ -158,6 +166,8 @@ Verses your notes cite that have no note of their own: a list of what you might 
 - Open a row to see the notes that cite it; click one to open it at the reference.
 - **Start a note** from the row, or right-click to save it as a rabbit trail or copy the reference. Passages already saved as rabbit trails are tagged.
 - A row disappears as soon as a note on that passage exists.
+
+![The Gaps tab, most cited first, with Isaiah 41:4 opened to the notes that cite it](images/gaps.jpg)
 
 ## Verse pop-up
 
