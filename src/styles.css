@@ -5,7 +5,7 @@
 /* The header (title, main passage, tools) stays put while the list scrolls under it. */
 .passage-index .pi-head {
   position: sticky; top: 0; z-index: 2;
-  margin: 0 -10px 10px; padding: 8px 10px 6px;
+  margin: 0 -10px 10px; padding: 8px 10px 0;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -223,13 +223,13 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 .pi-indent { display: inline-block; width: 1.5em; }
 
 /* Index | Map tabs in the sticky header. */
-.passage-index .pi-tabs { display: flex; gap: 2px; margin-top: 6px; }
+.passage-index .pi-tabs { display: flex; gap: 2px; margin: 12px -10px -1px; padding: 0 10px; }
 .passage-index .pi-tab {
-  padding: 2px 10px; border-radius: var(--radius-s); cursor: pointer; color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  padding: 4px 10px 5px; border-radius: var(--radius-s) var(--radius-s) 0 0; cursor: pointer; color: var(--text-muted);
+  font-size: var(--font-ui-smaller); border-bottom: 2px solid transparent;
 }
-.passage-index .pi-tab:hover { background: var(--background-modifier-hover); }
-.passage-index .pi-tab.is-active { background: var(--background-modifier-active-hover); color: var(--text-normal); font-weight: var(--font-semibold); }
+.passage-index .pi-tab:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.passage-index .pi-tab.is-active { color: var(--text-normal); font-weight: var(--font-semibold); border-bottom-color: var(--text-accent); }
 
 /* Coverage map (pane Map tab and pi-map code blocks). Shade = mentions: 0 / 1 / 2–3 / 4+. */
 .passage-index .pi-map-nav { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
@@ -284,7 +284,13 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 .setting-item-name .pi-tag { margin-left: 6px; font-size: var(--font-ui-smaller); padding: 0 5px; border-radius: 6px; background: var(--background-modifier-border); color: var(--text-muted); }
 
 /* Trail (under the pane's title): Revelation 1v7-8 › Rider on the Clouds Motif › Psalms 68:4 */
-.passage-index .pi-trail { display: flex; align-items: flex-start; gap: 4px; margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--background-modifier-border); font-size: var(--font-ui-smaller); }
+.passage-index .pi-trail {
+  display: flex; align-items: flex-start; gap: 4px; margin-top: 8px; padding: 3px 4px 3px 6px;
+  border: 1px solid hsla(var(--interactive-accent-hsl), 0.25); border-radius: var(--radius-m);
+  background: hsla(var(--interactive-accent-hsl), 0.06); font-size: var(--font-ui-smaller);
+}
+.passage-index .pi-trail-icon { display: flex; align-items: center; padding-top: 2px; color: var(--text-accent); opacity: 0.8; flex-shrink: 0; }
+.passage-index .pi-trail-icon svg { width: 13px; height: 13px; }
 .passage-index .pi-trail-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 2px; min-width: 0; flex: 1 1 auto; }
 .passage-index .pi-crumb {
   max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

@@ -1394,6 +1394,7 @@ ${was}` : `Section: ${b.s.title}`);
     const t = this.plugin.trail;
     if (!t || !t.steps.length) return;
     const bar = head.createDiv({ cls: "pi-trail" });
+    setIcon(bar.createSpan({ cls: "pi-trail-icon", attr: { "aria-label": "Trail: the notes you've opened from here" } }), "footprints");
     const crumbs = bar.createDiv({ cls: "pi-trail-steps" });
     const n = t.steps.length;
     // Up to 5 steps show; beyond that: the first, …, and the last three.
