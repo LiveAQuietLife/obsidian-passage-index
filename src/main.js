@@ -1388,7 +1388,7 @@ ${was}` : `Section: ${b.s.title}`);
   }
 
   // The trail, under the title: Revelation 1v7-8 › Rider on the Clouds Motif › Psalms 68:4.
-  // Click a step to go back to it. Long trails fold in the middle (… lists the hidden steps).
+  // Click a step to go to it (Ctrl-hover previews it). Long trails fold in the middle (… lists the hidden steps).
   // Tools: back to the start, copy the trail as links, end the trail.
   renderTrail(head, file) {
     const t = this.plugin.trail;
@@ -1414,9 +1414,20 @@ ${was}` : `Section: ${b.s.title}`);
       const s = t.steps[j];
       const label = this.plugin.trailLabel(s);
       const c = crumbs.createSpan({ cls: "pi-crumb" + (j === t.at ? " is-current" : ""), text: label });
-      if (j !== t.at) c.addEventListener("click", () => this.plugin.trailGo(j));
-      c.addEventListener("mouseover", (event) => this.app.workspace.trigger("hover-link", {
-        event, source: VIEW_TYPE, hoverParent: this, targetEl: c, linktext: s.path, sourcePath: file?.path || "" }));
+      // Acts on mouse-down, not click: a redraw between press and release (the pane redraws
+      // after edits) would otherwise lose the click. The current step brings its tab to the front too.
+      c.addEventListener("mousedown", (evt) => {
+        if (evt.button !== 0) return;
+        evt.preventDefault();
+        this.plugin.trailGo(j);
+      });
+      // Preview only with Ctrl (Cmd) held: crumbs sit close together, and a preview opened by
+      // passing over one covered the next, so a click landed in the preview, not on the crumb.
+      c.addEventListener("mouseover", (event) => {
+        if (!(event.ctrlKey || event.metaKey)) return;
+        this.app.workspace.trigger("hover-link", {
+          event, source: VIEW_TYPE, hoverParent: this, targetEl: c, linktext: s.path, sourcePath: file?.path || "" });
+      });
     });
     const tools = bar.createDiv({ cls: "pi-trail-tools" });
     const tool = (icon, label, fn) => {

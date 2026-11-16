@@ -291,7 +291,7 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
   padding: 0 4px; border-radius: var(--radius-s); color: var(--text-accent); font-style: italic; cursor: pointer;
 }
 .passage-index .pi-crumb:hover { color: var(--text-accent-hover); background: var(--background-modifier-hover); }
-.passage-index .pi-crumb.is-current { color: var(--text-accent); font-weight: var(--font-semibold); cursor: default; background: hsla(var(--interactive-accent-hsl), 0.15); }
+.passage-index .pi-crumb.is-current { color: var(--text-accent); font-weight: var(--font-semibold); background: hsla(var(--interactive-accent-hsl), 0.15); }
 .passage-index .pi-crumb-sep { color: var(--text-faint); }
 .passage-index .pi-trail-tools { display: flex; gap: 0; flex-shrink: 0; }
 .passage-index .pi-trail-tools .clickable-icon { padding: 2px; }
