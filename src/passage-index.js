@@ -95,6 +95,7 @@ class PassageIndex {
     this.opts = opts;
     this.files = new Map();  // path -> { path, refs: [...], main: [...] }
     this.byBook = new Map(); // book id -> Set(path)
+    this.version = 0;        // bumped on every change, so results can be reused until then
   }
 
   // text: full file contents; basename: file name without extension;
@@ -138,6 +139,7 @@ class PassageIndex {
     const bodyStart = fm ? fm[0].split(String.fromCharCode(10)).length : 0; // first line after the frontmatter
     const entry = { path, refs, main, bodyStart, ignored: ignored.map(format), ...readIntertexts(lines, bodyRefs, this.opts.intertextHeadings) };
     this.files.set(path, entry);
+    this.version++;
     for (const r of refs) {
       if (!this.byBook.has(r.book)) this.byBook.set(r.book, new Set());
       this.byBook.get(r.book).add(path);
@@ -180,6 +182,7 @@ class PassageIndex {
     if (!e) return;
     for (const r of e.refs) this.byBook.get(r.book)?.delete(path);
     this.files.delete(path);
+    this.version++;
   }
 
   rename(oldPath, newPath, text, basename, override, ignore) {
@@ -275,11 +278,42 @@ class PassageIndex {
   // ("Dan 7:13" and "Dan 7:13–14" are two rows); spellings of the same range are merged.
   // Returns [{ key, ref, passage, notes: [{ path, line, col, refText, lineText, lineCol, count }] }],
   // cited by most notes first, then Bible order. Each row's notes by name.
+  // The result is reused until a note changes (this.version), so treat it as read-only.
   unwritten(skipPath = null) {
     const wide = this.opts.broadChapters || 2;
-    const mains = [];
-    for (const e of this.files.values()) if (e.path !== skipPath) mains.push(...e.main);
-    const written = (r) => mains.some((m) => overlaps(m, r));
+    const key = `${this.version}|${skipPath}|${wide}`;
+    if (this._gaps?.key === key) return this._gaps.rows;
+    // Main passages by book, so each check only looks at notes on the same book (bug 15).
+    const mains = new Map();
+    for (const e of this.files.values()) {
+      if (e.path === skipPath) continue;
+      for (const m of e.main) {
+        if (!mains.has(m.book)) mains.set(m.book, []);
+        mains.get(m.book).push(m);
+      }
+    }
+    // Each book's mains sorted by start, with the furthest end so far: a reference overlaps
+    // some main iff, among mains starting at or before its end, the furthest end reaches its start.
+    const spans = new Map();
+    for (const [book, ms] of mains) {
+      ms.sort((a, b) => lo(a) - lo(b));
+      let far = -1;
+      spans.set(book, { starts: ms.map(lo), far: ms.map((m) => (far = Math.max(far, hi(m)))) });
+    }
+    const written = (r) => {
+      const s = spans.get(r.book);
+      if (!s) return false;
+      const end = hi(r);
+      let a = 0, b = s.starts.length; // first start > end
+      while (a < b) { const mid = (a + b) >> 1; if (s.starts[mid] <= end) a = mid + 1; else b = mid; }
+      return a > 0 && s.far[a - 1] >= lo(r);
+    };
+    const rows = this.unwrittenRows(skipPath, wide, written);
+    this._gaps = { key, rows };
+    return rows;
+  }
+
+  unwrittenRows(skipPath, wide, written) {
     const rows = new Map();
     for (const e of this.files.values()) {
       if (e.path === skipPath) continue;

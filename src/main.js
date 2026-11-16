@@ -68,6 +68,7 @@ function fillTranslationSelect(selectEl, has, current) {
 }
 
 const VIEW_TYPE = "passage-index-pane";
+const GAPS_PAGE = 200; // Gaps tab rows drawn at a time
 const lo = (r) => r.c1 * 1000 + (r.v1 ?? 0);
 const hi = (r) => r.c2 * 1000 + (r.v2 ?? 999);
 const covers = (outer, r) => outer.book === r.book && lo(outer) <= lo(r) && hi(r) <= hi(outer);
@@ -1803,9 +1804,12 @@ ${was}` : `Section: ${b.s.title}`);
       ? [...rows].sort((a, b) => (a.ref.book - b.ref.book) || (lo(a.ref) - lo(b.ref)) || (hi(a.ref) - hi(b.ref)))
       : rows;
     if (!this.gapsOpen) this.gapsOpen = new Set();
+    const view = `${this.gapsBook || 0}|${order}`; // a new book or order starts at the first page
+    if (this.gapsView !== view) { this.gapsView = view; this.gapsShown = GAPS_PAGE; }
+    const shown = sorted.slice(0, Math.max(this.gapsShown || 0, GAPS_PAGE));
     const list = wrap.createDiv({ cls: "pi-gaps" });
     let book = null;
-    for (const g of sorted) {
+    for (const g of shown) {
       if (order === "bible" && !this.gapsBook && g.ref.book !== book) {
         book = g.ref.book;
         list.createDiv({ cls: "pi-map-label pi-rabbit-book", text: BOOK_NAME[book] || g.ref.bookName || "" });
@@ -1828,11 +1832,26 @@ ${was}` : `Section: ${b.s.title}`);
         menu.addItem((i) => i.setTitle("Copy reference").setIcon("copy").onClick(() => this.copy(g.passage, "Reference copied")));
         menu.showAtMouseEvent(evt);
       });
-      const inner = det.createDiv({ cls: "pi-list" });
-      for (const n of g.notes) mapNoteItem(inner, this.plugin, { file, hoverParent: this }, n, n.count > 1 ? `×${n.count}` : null);
-      const none = inner.createDiv({ cls: "pi-none" });
-      const start = none.createEl("a", { cls: "pi-start-note", text: "Start a note", href: "#", attr: { "aria-label": `Start a note on ${g.passage}` } });
-      start.addEventListener("click", (evt) => { evt.preventDefault(); this.plugin.startNote(g.ref, file); });
+      // The citing notes are drawn when the row is first opened (large vaults: thousands of rows).
+      let filled = false;
+      const fill = () => {
+        if (filled) return;
+        filled = true;
+        const inner = det.createDiv({ cls: "pi-list" });
+        for (const n of g.notes) mapNoteItem(inner, this.plugin, { file, hoverParent: this }, n, n.count > 1 ? `×${n.count}` : null);
+        const none = inner.createDiv({ cls: "pi-none" });
+        const start = none.createEl("a", { cls: "pi-start-note", text: "Start a note", href: "#", attr: { "aria-label": `Start a note on ${g.passage}` } });
+        start.addEventListener("click", (evt) => { evt.preventDefault(); this.plugin.startNote(g.ref, file); });
+      };
+      if (det.open) fill();
+      det.addEventListener("toggle", () => { if (det.open) fill(); });
+    }
+    // Rows are drawn GAPS_PAGE at a time; "Show more" adds the next page.
+    const left = sorted.length - shown.length;
+    if (left > 0) {
+      const more = wrap.createDiv({ cls: "pi-none" }).createEl("a", { cls: "pi-start-note", href: "#",
+        text: `Show ${Math.min(left, GAPS_PAGE)} more (${left} not shown)` });
+      more.addEventListener("click", (evt) => { evt.preventDefault(); this.gapsShown = shown.length + GAPS_PAGE; this.render(); });
     }
   }
 
