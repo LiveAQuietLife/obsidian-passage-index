@@ -23,7 +23,7 @@ Links count by their display text. A link without display text counts only if th
 
 Open it from the ribbon icon or the command **Passage Index: Open pane**. It updates whenever you open a note, and re-reads a note shortly after you stop typing.
 
-The pane has two tabs, **Index** and **Map**. The Index tab has three parts: passage groups, **Topics** and **Intertexts**.
+The pane has four tabs: **Index**, **Map**, **Rabbit trails** and **Gaps**. The Index tab starts with **Rabbit trails**, **Intertexts** and **Topics** (each only when it has something to show), then the passage groups. Above the tabs, the **trail** shows the notes you've opened along the way.
 
 ### Index
 
@@ -33,6 +33,7 @@ The pane has two tabs, **Index** and **Map**. The Index tab has three parts: pas
 - **Click** a result to open it in a new tab with the cursor on that line. The reference is briefly highlighted.
 - **Hover** a result to preview the note at that line (this follows Obsidian's Page preview setting).
 - **Hold Ctrl** (Cmd on a Mac) and point at a passage heading to read the verses (see *Verse pop-up*).
+- A passage with no other notes says so, with **Start a note** (see below).
 
 ![Passage groups opened, with results tagged about, exact, inside and chapter](images/pane-sidebar.jpg)
 
@@ -47,7 +48,46 @@ The pane has two tabs, **Index** and **Map**. The Index tab has three parts: pas
 - **Open in Logos** (and Bible Gateway, Blue Letter Bible or STEP Bible, if you turn them on in the *Open in* tab). Logos opens in the app if it's installed, otherwise on the web.
 - **Show in this note:** jumps to where the note you're reading cites the passage.
 - Open the note about this passage, copy the passage, copy links to all its notes as a list, or open them all in tabs.
+- **Start a note on …** (when no note is about this passage) and **Save as a rabbit trail…**.
 - Collapse or expand the groups.
+
+### Trail
+
+Open a note from the pane and a trail starts: the note you were reading, then each note you open after it, whether from the pane, a link or a tab. It shows above the tabs as `Revelation 1v7-8 › Rider on the Clouds Motif › Psalms 68v4`.
+
+- **Click** a step to go back to it. Its tab comes to the front, or the note opens again at the line you opened it on.
+- **Hold Ctrl** (Cmd) and point at a step to preview it.
+- Go back to an earlier step and open something new, and the steps after it are dropped, as with a browser's Back.
+- Long trails fold in the middle; click **…** for the hidden steps.
+- The buttons at the end go back to the start, copy the trail as links (`[[A]] → [[B]] → [[C]]`), or end it.
+
+The trail is kept until you end it or restart Obsidian. Where the notes open is a setting: a new tab for each, or one trail tab that's reused.
+
+### Start a note
+
+When a passage has no note of its own, **Start a note** (in an empty group, the Gaps tab, or the right-click menu) makes one. A small window asks for the name and folder (both suggested, both editable), says how Passage Index will read the name, and shows what the note will contain. Nothing is written until you choose **Create**.
+
+The new note is plain, with no properties or template, so you can add your own. Its body starts with the trail that led to it:
+
+```markdown
+Trail: [[Revelation 1v7-8]] → [[Rider on the Clouds Motif]] → Psalms 68:4
+```
+
+The note opens with the cursor below that line and becomes the next step of the trail.
+
+### Rabbit trails
+
+A passage you want to look into later, without leaving what you're reading. Right-click a passage heading and choose **Save as a rabbit trail…**, add a line about why if you like, and Passage Index adds a line to your rabbit-trails note (`Rabbit trails.md` unless you choose another in settings):
+
+```markdown
+- Daniel 7:13 — why does John join it to Zech 12:10? (from [[Revelation 1v7-8]], 2026-11-14)
+```
+
+- In the Index tab, a **Rabbit trails** section shows the saved lines that touch a passage the note cites, and the ones saved from this note (*from here*).
+- The **Rabbit trails** tab lists them all, newest first or in Bible order. Right-click one to open it, open the note it came from, start a note on it, copy it or remove it.
+- When you're done with one, remove it or delete the line.
+
+The rabbit-trails note isn't listed under passages and isn't counted in the Map.
 
 ### Topics
 
@@ -100,6 +140,8 @@ A coverage map of the main passage's book: one square per chapter, shaded by how
 
 ![The Map tab: Revelation's chapters shaded by how often they are referenced](images/map-tab.jpg)
 
+**Also cited with**, below a chapter's verses, lists the other chapters that notes on this chapter cite, most notes first: *Notes on Rev 1 also cite Dan 7 · 4, Zech 12 · 3 …* Select a verse and it narrows to notes citing that verse. Click a chapter to see the notes and the verses they cite there (`7:9, 7:13–14`); click a note to open it at the reference. Ctrl-hover a chapter to read it.
+
 The command **Insert coverage map** adds a live `pi-map` code block to a note:
 
 ````
@@ -107,6 +149,15 @@ The command **Insert coverage map** adds a live `pi-map` code block to a note:
 Revelation
 ```
 ````
+
+### Gaps
+
+Verses your notes cite that have no note of their own: a list of what you might write next. A verse counts as written when some note's main passage overlaps it (so `Rev 1:7–9` counts if you have `Revelation 1v7-8`). Chapter-only and broad references are left out.
+
+- **Most cited** first (or **Bible order**, by book), with the number of notes citing each. Pick a book to narrow the list.
+- Open a row to see the notes that cite it; click one to open it at the reference.
+- **Start a note** from the row, or right-click to save it as a rabbit trail or copy the reference. Passages already saved as rabbit trails are tagged.
+- A row disappears as soon as a note on that passage exists.
 
 ## Verse pop-up
 
@@ -135,6 +186,8 @@ Topic notes are notes about a subject rather than a passage. A note counts as a 
 - **Group passages by section (pericopes):** groups the note's passages under a translation's section headings (BSB, LEB or TCENT; download one in the Translations tab).
 - **Hide broad matches** and **Hide chapter-only mentions**, with a button in the pane to show them.
 - **Highlight duration** and **Hover previews**.
+- **Trail: open notes in:** a new tab for each note (default), or one trail tab that's reused, so Obsidian's Back and Forward work in it.
+- **Rabbit trails note:** where saved rabbit trails go (default `Rabbit trails.md`). It's read even if it's in an excluded folder.
 
 ### Translations
 

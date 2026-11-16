@@ -2651,7 +2651,7 @@ class PassageIndexSettings extends PluginSettingTab {
     }
     new Setting(el)
       .setName("Trail: open notes in")
-      .setDesc("While a trail runs (it starts when you open a note from the pane, or follow a passage), where notes open. A new tab each time keeps every step side by side. One trail tab reuses a single tab, so there are fewer tabs and Obsidian's Back and Forward work in it; the note you started from stays in its own tab.")
+      .setDesc("While a trail runs (it starts when you open a note from the pane), where notes open. A new tab each time keeps every step side by side. One trail tab reuses a single tab, so there are fewer tabs and Obsidian's Back and Forward work in it; the note you started from stays in its own tab.")
       .addDropdown((d) => d
         .addOption("new", "A new tab for each note")
         .addOption("reuse", "One trail tab, reused")
