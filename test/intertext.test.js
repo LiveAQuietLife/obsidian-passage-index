@@ -25,5 +25,35 @@ check("same text earlier in a link target", read(["- [[Son of Man#Dan 7:13 (echo
 check("same text earlier, indented and with CRLF", read(["  - [[Son of Man#Dan 7:13 (echoes)|motif]]: Dan 7:13 (alludes; Marcus, 1008)\r"]),
   [["Dan 7:13", "alludes to", "Marcus, 1008", ""]]);
 
+// Reverse lines: "quoted by", "alluded to by", "echoed by".
+const rev = (line) => {
+  idx.setFile("Mark 14v62.md", ["## Intertexts", line].join("\n"), "Mark 14v62");
+  const x = idx.files.get("Mark 14v62.md").intertexts[0];
+  return [x.relation, x.reverse, x.citation, x.description];
+};
+check("quoted by", rev("- Acts 13:33 (quoted by; Bratcher 1991, 29) — raising Jesus"), ["quotes", true, "Bratcher 1991, 29", "raising Jesus"]);
+check("alluded to by", rev("- Matt 3:17 (alluded to by)"), ["alludes to", true, "", ""]);
+check("echoed by", rev("- Rev 2:18 (echoed by; Beale 1999, 259)"), ["echoes", true, "Beale 1999, 259", ""]);
+check("forward is not reverse", rev("- Dan 7:13 (quotes; France 2002, 612)"), ["quotes", false, "France 2002, 612", ""]);
+check("'by' in the citation doesn't count", rev("- Dan 7:13 (quotes; cited by France 2002, 612)"), ["quotes", false, "cited by France 2002, 612", ""]);
+
+// Where reverse lines show in the pane.
+const ix = new PassageIndex(createReader(), { broadChapters: 2 });
+const lists = (path) => {
+  const r = ix.intertextsFor(path);
+  return { uses: r.uses.map((x) => `${x.passage} ${x.relation}`), usedBy: r.usedBy.map((x) => `${x.passage} ${x.relation}`) };
+};
+ix.setFile("Psalm 2v7-9.md", ["## Intertexts", "- 2 Sam 7:14 (alludes to)", "- Acts 13:33 (quoted by)", "- Rev 2:27 (quoted by)"].join("\n"), "Psalm 2v7-9");
+check("own reverse lines go under Used by", lists("Psalm 2v7-9.md"),
+  { uses: ["2 Samuel 7:14 alludes to"], usedBy: ["Acts 13:33 quotes", "Revelation 2:27 quotes"] });
+ix.setFile("Acts 13v32-33.md", "Some text.", "Acts 13v32-33");
+check("another note's view: the reverse line shows under Uses", lists("Acts 13v32-33.md"),
+  { uses: ["Psalms 2:7–9 quotes"], usedBy: [] });
+ix.setFile("Revelation 2v24-29.md", ["## Intertexts", "- Psalm 2:9 (quotes)"].join("\n"), "Revelation 2v24-29");
+check("recorded at both ends: listed once", lists("Psalm 2v7-9.md"),
+  { uses: ["2 Samuel 7:14 alludes to"], usedBy: ["Acts 13:33 quotes", "Revelation 2:24–29 quotes"] });
+check("recorded at both ends, other end: listed once", lists("Revelation 2v24-29.md"),
+  { uses: ["Psalms 2:9 quotes"], usedBy: [] });
+
 console.log(fail ? `${fail} failed, ${pass} passed` : `All ${pass} passed`);
 process.exit(fail ? 1 : 0);

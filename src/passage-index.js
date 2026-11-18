@@ -43,22 +43,24 @@ const plainLinks = (s) => s.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2").replac
 // "(DBI, 769)" -> relation unspecified, citation "DBI, 769".
 // Read after the indexed reference (its column), not the first match of its text: the same
 // text can appear earlier, e.g. in a masked link target (bug 3).
+// "(quoted by; …)", "(alluded to by)", "(echoed by)" -> reverse: the listed text uses this
+// note's passage, so the line belongs under Used by rather than Uses.
 function readLine(lineText, ref) {
   const at = ref.col >= 0 && lineText.startsWith(ref.text, ref.col) ? ref.col : lineText.indexOf(ref.text);
   const after = lineText.slice(at + ref.text.length);
-  let relation = "unspecified", citation = "", description = "";
+  let relation = "unspecified", citation = "", description = "", reverse = false;
   const parens = [...after.matchAll(/\(((?:\[\[[^\]]*\]\]|[^()])*)\)/g)].map((m) => m[1]);
   const first = parens[0];
   if (first != null) {
     const [head, ...tail] = first.split(";");
     const hit = Object.keys(RELATION).find((k) => RELATION[k].test?.test(head));
-    if (hit) { relation = hit; citation = tail.join(";"); }
+    if (hit) { relation = hit; citation = tail.join(";"); reverse = /\bby\b/i.test(head); }
   }
   // A trailing "(…, page)" is a citation (e.g. after a description).
   if (!citation && parens.length && (relation === "unspecified" || parens.length > 1)) citation = parens[parens.length - 1];
   const dash = after.match(/\s[—–-]\s+(.*)$/);
   if (dash) description = dash[1].replace(/\s*\((?:\[\[[^\]]*\]\]|[^()])*\)\s*$/, "");
-  return { relation, citation: plainLinks(citation), description: plainLinks(description) };
+  return { relation, reverse, citation: plainLinks(citation), description: plainLinks(description) };
 }
 
 function readIntertexts(lines, bodyRefs, headings) {
@@ -375,8 +377,10 @@ class PassageIndex {
   }
 
   // The Intertexts section of the pane.
-  //   uses:   this note's own "## Intertexts" lines
-  //   usedBy: other notes' intertext lines that point into this note's main passage
+  //   uses:   this note's own "## Intertexts" lines, plus other notes' reverse lines
+  //           ("quoted by" etc.) that point into this note's main passage
+  //   usedBy: other notes' intertext lines that point into this note's main passage,
+  //           plus this note's own reverse lines
   //   open:   other notes' open #intertext tasks naming this note's main passage
   //           (verse references only; a bare chapter like "Zech 14" doesn't count)
   intertextsFor(path) {
@@ -398,8 +402,12 @@ class PassageIndex {
       }
       return best && best.path;
     };
-    const uses = e.intertexts.map((it) => ({ ...it, path, passage: format(it.target), ref: it.target, home: homeOf(it.target) }))
-      .sort((a, b) => (relRank(a.relation) - relRank(b.relation)) || canon(a.ref, b.ref));
+    // Reverse lines ("quoted by" etc.) record the link from the used passage's end:
+    // this note's go under Used by, other notes' pointing here go under Uses. When both
+    // notes record the same link, the forward line wins and the reverse one is dropped.
+    const own = (it) => ({ ...it, path, passage: format(it.target), ref: it.target, home: homeOf(it.target) });
+    const uses = e.intertexts.filter((it) => !it.reverse).map(own);
+    const coversOwn = (oe, reverse) => e.intertexts.some((x) => !!x.reverse === reverse && oe.main.some((m) => overlaps(m, x.target)));
 
     const usedBy = [], open = [];
     if (e.main.length) {
@@ -408,8 +416,10 @@ class PassageIndex {
         for (const it of oe.intertexts) {
           if (!hitsMain(it.target)) continue;
           const src = oe.main[0];
-          usedBy.push({ ...it, path: oe.path, passage: src ? oe.main.map(format).join("; ") : name(oe.path),
-            ref: src || it.target, noteName: name(oe.path) });
+          const row = { ...it, path: oe.path, passage: src ? oe.main.map(format).join("; ") : name(oe.path),
+            ref: src || it.target, noteName: name(oe.path) };
+          if (!it.reverse) usedBy.push(row);
+          else if (!coversOwn(oe, false)) uses.push(row);
         }
         for (const t of oe.openTasks) {
           const r = t.refs.find(hitsMain);
@@ -418,7 +428,11 @@ class PassageIndex {
         }
       }
     }
-    usedBy.sort((a, b) => (relRank(a.relation) - relRank(b.relation)) || canon(a.ref, b.ref));
+    const forwardHere = (r) => usedBy.some((u) => !u.reverse && this.files.get(u.path).main.some((m) => overlaps(m, r)));
+    for (const it of e.intertexts) if (it.reverse && !forwardHere(it.target)) usedBy.push(own(it));
+    const byKind = (a, b) => (relRank(a.relation) - relRank(b.relation)) || canon(a.ref, b.ref);
+    uses.sort(byKind);
+    usedBy.sort(byKind);
     open.sort((a, b) => a.noteName.localeCompare(b.noteName) || a.line - b.line);
     return { uses, usedBy, open };
   }

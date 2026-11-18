@@ -126,6 +126,18 @@ Add an `## Intertexts` heading to a note (any level works; to use another name, 
 
 Anything else (for example *mentions*), or no parentheses, is listed without a kind. After a `;`, the rest is the citation. After ` — `, a short description.
 
+**From the other end.** Studying the passage that gets used, and don't have notes for the texts that use it? Add *by* to the kind: *quoted by*, *alluded to by*, *echoed by*. In `Psalm 2v7-9`:
+
+```markdown
+## Intertexts
+
+- 2 Sam 7:14 (alludes to) — the Davidic covenant
+- Acts 13:33 (quoted by; Bratcher 1991, 29)
+- Matt 3:17 (alluded to by) — the baptism
+```
+
+The *by* lines show under **Used by** in this note and under **Uses** in a note on Acts 13:33, if you write one later. A link recorded at both ends is listed once.
+
 **Open questions** go anywhere in a note as tasks tagged `#intertext`:
 
 ```markdown
@@ -135,7 +147,7 @@ Anything else (for example *mentions*), or no parentheses, is listed without a k
 **What the pane shows** in the Intertexts section:
 
 - **Uses:** this note's own intertext lines. Clicking one opens the used passage's note (e.g. `Isaiah 56v7`), if you have one.
-- **Used by:** other notes' intertext lines that point into this note's main passage. Open `Isaiah 56v7` and you see that Mark 11:17 quotes it.
+- **Used by:** other notes' intertext lines that point into this note's main passage. Open `Isaiah 56v7` and you see that Mark 11:17 quotes it. This note's own *by* lines show here too.
 - **Open:** other notes' unfinished `#intertext` tasks naming this passage.
 
 ![The Intertexts section listing the passages this note alludes to and echoes](images/intertexts.jpg)

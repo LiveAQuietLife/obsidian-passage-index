@@ -1956,7 +1956,8 @@ ${was}` : `Section: ${b.s.title}`);
         top.createSpan({ cls: "pi-name", text: n.passage });
         const meta = top.createSpan({ cls: "pi-meta" });
         relTag(meta, n.relation);
-        if (n.noteName !== n.passage && n.noteName.replace(/(\d)v(\d)/g, "$1:$2") !== n.passage) meta.createSpan({ cls: "pi-folder", text: n.noteName });
+        // Reverse lines from this note have no other note to name.
+        if (n.noteName && n.noteName !== n.passage && n.noteName.replace(/(\d)v(\d)/g, "$1:$2") !== n.passage) meta.createSpan({ cls: "pi-folder", text: n.noteName });
         extra(item, n);
       });
     }
