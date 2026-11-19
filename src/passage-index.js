@@ -492,6 +492,23 @@ class PassageIndex {
     return { uses, usedBy, open };
   }
 
+  // The lines at the other end of the same link (for Remove): row is an intertext line in
+  // the note at row.path. A partner is a line in a note whose main passage overlaps row's
+  // target, pointing back into row's note's main passage, written the other way round
+  // (a forward line's partner is a "by" line and vice versa).
+  partnerLines(row) {
+    const pe = this.files.get(row.path);
+    if (!pe || !pe.main.length) return [];
+    const out = [];
+    for (const oe of this.files.values()) {
+      if (oe.path === row.path || !oe.main.some((m) => overlaps(m, row.target))) continue;
+      for (const it of oe.intertexts) {
+        if (!!it.reverse !== !!row.reverse && pe.main.some((m) => overlaps(m, it.target))) out.push({ path: oe.path, line: it.line, lineText: it.lineText });
+      }
+    }
+    return out;
+  }
+
   // The Topics section of the pane: topic notes reached through any passage this note
   // cites, each listed once with the passages it shares ("via"). isTopic(path) decides
   // what counts as a topic (the plugin reads frontmatter/folders), so this module stays

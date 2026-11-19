@@ -120,7 +120,7 @@ It shows the line it will write, and where the link will show, before you choose
 - **Used by:** the texts that quote, allude to or echo this passage, e.g. *Acts 13:33 · quotes*. They come from this note's own lines and from other notes that point to this note's main passage. Open `Isaiah 56v7` and you see that Mark 11:17 quotes it.
 - **Open questions:** other notes' unfinished `#intertext` tasks naming this passage.
 
-Point at a row to read the link as a sentence (*Acts 13:33 quotes Psalms 2:7–9*). A link recorded in both notes is listed once. A passage note with no intertexts yet shows a folded **Intertexts · none yet** section with the **Add intertext…** link.
+Point at a row to read the link as a sentence (*Acts 13:33 quotes Psalms 2:7–9*). A link recorded in both notes is listed once. To remove one, right-click it and choose **Remove this intertext…**: it shows the line before deleting it and, if the link is recorded in both notes, offers to remove both. Deleting the line yourself works too. A passage note with no intertexts yet shows a folded **Intertexts · none yet** section with the **Add intertext…** link.
 
 #### Writing the lines yourself
 

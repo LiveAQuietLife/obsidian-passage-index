@@ -89,5 +89,19 @@ check("insert: matching heading in a code block is skipped",
 check("insert: CRLF note keeps CRLF",
   addIntertextLine("## Intertexts\r\n- A 1:1\r\n", L), "## Intertexts\r\n- A 1:1\r\n- Acts 13:33 (quoted by)\r\n");
 
+// Remove: the line at the other end of the same link.
+const ends = (row) => ix.partnerLines(row).map((x) => `${x.path}:${x.line} ${x.lineText}`);
+const line = (path, text) => ix.files.get(path).intertexts.find((x) => x.lineText.startsWith(text));
+check("partner of a reverse line: the forward line at the other end",
+  ends({ ...line("Psalm 2v7-9.md", "- Rev 2:27"), path: "Psalm 2v7-9.md" }), ["Revelation 2v24-29.md:1 - Psalm 2:9 (quotes)"]);
+check("partner of a forward line: the reverse line at the other end",
+  ends({ ...line("Revelation 2v24-29.md", "- Psalm 2:9"), path: "Revelation 2v24-29.md" }), ["Psalm 2v7-9.md:3 - Rev 2:27 (quoted by)"]);
+check("recorded at one end only: no partner",
+  ends({ ...line("Psalm 2v7-9.md", "- Acts 13:33"), path: "Psalm 2v7-9.md" }), []);
+check("same direction at both ends isn't a partner",
+  (() => { ix.setFile("Rev 2v27 b.md", ["## Intertexts", "- Psalm 2:9 (quoted by)"].join("\n"), "Revelation 2v27");
+    const r = ends({ ...line("Psalm 2v7-9.md", "- Rev 2:27"), path: "Psalm 2v7-9.md" }); ix.remove("Rev 2v27 b.md"); return r; })(),
+  ["Revelation 2v24-29.md:1 - Psalm 2:9 (quotes)"]);
+
 console.log(fail ? `${fail} failed, ${pass} passed` : `All ${pass} passed`);
 process.exit(fail ? 1 : 0);

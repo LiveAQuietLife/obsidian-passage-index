@@ -620,11 +620,17 @@ class PassageIndexPlugin extends Plugin {
     new Notice(`Saved to ${path.split("/").pop().replace(/\.md$/, "")}`);
   }
 
-  // Deletes one saved line (line number and its trimmed text, as the index holds them). If the
-  // note changed since, the line is found by its text; if it's gone, nothing is written.
+  // Deletes one saved rabbit-trail line (see removeLine).
   async removeRabbitTrail(item) {
+    const done = await this.removeLine(item);
+    new Notice(done ? "Rabbit trail removed" : "Passage Index: that line has changed; nothing removed.");
+  }
+
+  // Deletes one line (path, line number and trimmed text, as the index holds them). If the note
+  // changed since, the line is found by its text; if it's gone, nothing is written. True if removed.
+  async removeLine(item) {
     const f = this.app.vault.getAbstractFileByPath(item.path);
-    if (!(f instanceof TFile)) return;
+    if (!(f instanceof TFile)) return false;
     let done = false;
     await this.app.vault.process(f, (t) => {
       const lines = t.split("\n");
@@ -635,7 +641,13 @@ class PassageIndexPlugin extends Plugin {
       done = true;
       return lines.join("\n");
     });
-    new Notice(done ? "Rabbit trail removed" : "Passage Index: that line has changed; nothing removed.");
+    return done;
+  }
+
+  // Remove an intertext (row: a line at row.path). Always asks first, showing the line; if the
+  // link is also recorded at the other end, offers to remove it there too.
+  removeIntertext(row) {
+    new RemoveIntertextModal(this.app, this, row, this.index.partnerLines(row)).open();
   }
 
   // The saved lines to show in a note's pane: those whose passage it touches, and those saved
@@ -1983,7 +1995,10 @@ ${was}` : `Section: ${b.s.title}`);
       const tip = said + (n.home === null ? "No note for this passage yet; opens the line in this note." : "");
       if (tip) item.setAttr("aria-label", tip.trim());
       item.addEventListener("click", () => this.plugin.openResult(go.path, go.line, go.col, go.refText));
-      item.addEventListener("contextmenu", (evt) => { evt.preventDefault(); this.itemMenu(evt, go, file); });
+      // Uses / Used by rows can be removed (the line, wherever it is); open questions are tasks.
+      const remove = n.side && n.target ? (menu) => menu.addItem((i) => i.setTitle("Remove this intertext…").setIcon("trash-2")
+        .onClick(() => this.plugin.removeIntertext(n))) : null;
+      item.addEventListener("contextmenu", (evt) => { evt.preventDefault(); this.itemMenu(evt, go, file, remove); });
       item.addEventListener("mouseover", (event) => {
         this.app.workspace.trigger("hover-link", {
           event, source: VIEW_TYPE, hoverParent: this, targetEl: item,
@@ -2088,7 +2103,8 @@ ${was}` : `Section: ${b.s.title}`);
   }
 
   // Right-click on a result.
-  itemMenu(evt, n, file) {
+  // extra(menu): optional, adds items at the end (e.g. Remove on Intertexts rows).
+  itemMenu(evt, n, file, extra) {
     const f = this.app.vault.getAbstractFileByPath(n.path);
     if (!(f instanceof TFile)) return;
     const menu = new Menu();
@@ -2114,6 +2130,7 @@ ${was}` : `Section: ${b.s.title}`);
     }
     // Let other plugins (e.g. Hover Editor) add their usual file items.
     this.app.workspace.trigger("file-menu", menu, f, "passage-index", this.leaf);
+    if (extra) { menu.addSeparator(); extra(menu); }
     menu.showAtMouseEvent(evt);
   }
 
@@ -3116,6 +3133,41 @@ class PassageIndexSettings extends PluginSettingTab {
 }
 
 // A small yes/no dialog.
+// Remove this intertext…: shows the line (and the one at the other end, if the link is recorded
+// in both notes) before deleting anything.
+class RemoveIntertextModal extends Modal {
+  constructor(app, plugin, row, partners) { super(app); this.plugin = plugin; this.row = row; this.partners = partners; }
+  onOpen() {
+    this.titleEl.setText("Remove this intertext?");
+    const el = this.contentEl;
+    const name = (p) => p.split("/").pop().replace(/\.md$/, "");
+    const show = (item) => {
+      el.createDiv({ cls: "pi-start-preview-label", text: `In ${name(item.path)}:` });
+      el.createDiv({ cls: "pi-start-preview" }).createEl("pre", { text: item.lineText });
+    };
+    show(this.row);
+    const both = this.partners.length > 0;
+    if (both) {
+      el.createEl("p", { cls: "setting-item-description",
+        text: "The same link is also recorded at the other end. Remove only the line above and the pane keeps listing the link from the other one:" });
+      this.partners.forEach(show);
+    }
+    const run = async (items) => {
+      this.close();
+      let n = 0;
+      for (const it of items) if (await this.plugin.removeLine(it)) n++;
+      new Notice(n === items.length ? (n > 1 ? `Intertext removed from ${n} notes` : "Intertext removed")
+        : "Passage Index: a line had changed; not everything was removed.");
+    };
+    const s = new Setting(el).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+    if (both) {
+      s.addButton((b) => b.setButtonText(`Only in ${name(this.row.path)}`).onClick(() => run([this.row])));
+      s.addButton((b) => b.setButtonText("Remove both").setWarning().onClick(() => run([this.row, ...this.partners])));
+    } else s.addButton((b) => b.setButtonText("Remove").setWarning().onClick(() => run([this.row])));
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
 class ConfirmModal extends Modal {
   constructor(app, title, text, yes, onYes) { super(app); this.t = title; this.x = text; this.yes = yes; this.onYes = onYes; }
   onOpen() {
