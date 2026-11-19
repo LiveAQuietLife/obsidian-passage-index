@@ -331,3 +331,10 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 /* Gaps tab: cited passages with no note of their own. */
 .passage-index .pi-gaps-book { font-size: var(--font-ui-smaller); height: auto; padding-top: 1px; padding-bottom: 1px; max-width: 55%; }
 .passage-index .pi-gap > summary .pi-tag { margin-left: 6px; }
+
+/* Add intertext… window and the pane's empty Intertexts section. */
+.pi-intertext-modal .pi-it-kind { max-width: 100%; }
+.pi-intertext-modal .pi-it-summary { margin: 2px 0 10px; }
+.pi-intertext-modal .pi-it-sentence { font-weight: var(--font-semibold); margin-bottom: 2px; }
+.passage-index .pi-it-none summary .pi-folder { margin-left: 6px; color: var(--text-faint); }
+.passage-index .pi-it-add { margin-top: 4px; }

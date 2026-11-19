@@ -55,5 +55,39 @@ check("recorded at both ends: listed once", lists("Psalm 2v7-9.md"),
 check("recorded at both ends, other end: listed once", lists("Revelation 2v24-29.md"),
   { uses: ["Psalms 2:9 quotes"], usedBy: [] });
 
+// Add intertext…: the line written, and where it goes.
+const { intertextLine, addIntertextLine } = require("../src/passage-index");
+check("line: forward with citation and note",
+  intertextLine({ passage: "2 Sam 7:14", relation: "alludes to", reverse: false, citation: "Kidner 1973, 68", description: "the Davidic covenant" }),
+  "- 2 Sam 7:14 (alludes to; Kidner 1973, 68) — the Davidic covenant");
+check("line: reverse, nothing else", intertextLine({ passage: "Acts 13:33", relation: "quotes", reverse: true }), "- Acts 13:33 (quoted by)");
+check("line: no kind, citation only", intertextLine({ passage: "Ps 110:1", relation: "unspecified", citation: "DBI, 769" }), "- Ps 110:1 (DBI, 769)");
+check("line: no kind, nothing else", intertextLine({ passage: "Ps 110:1", relation: "" }), "- Ps 110:1");
+check("line: parentheses dropped from the citation", intertextLine({ passage: "Matt 3:17", relation: "echoes", reverse: true, citation: "France (2007), 122" }), "- Matt 3:17 (echoed by; France 2007, 122)");
+// Every kind, both ways, reads back as written.
+for (const relation of ["quotes", "alludes to", "echoes"]) for (const reverse of [false, true]) {
+  const line = intertextLine({ passage: "Acts 13:33", relation, reverse, citation: "Bratcher 1991, 29", description: "raising Jesus" });
+  check(`round trip: ${line}`, rev(line), [relation, reverse, "Bratcher 1991, 29", "raising Jesus"]);
+}
+
+const L = "- Acts 13:33 (quoted by)";
+check("insert: end of the section, before the next heading",
+  addIntertextLine("# Ps 2\n\n## Intertexts\n\n- 2 Sam 7:14 (alludes to)\n\n## Notes\n\nText.\n", L),
+  "# Ps 2\n\n## Intertexts\n\n- 2 Sam 7:14 (alludes to)\n- Acts 13:33 (quoted by)\n\n## Notes\n\nText.\n");
+check("insert: section last in the note",
+  addIntertextLine("## Intertexts\n- 2 Sam 7:14\n", L), "## Intertexts\n- 2 Sam 7:14\n- Acts 13:33 (quoted by)\n");
+check("insert: empty section, next heading straight after",
+  addIntertextLine("### Intertexts\n## Notes\n", L), "### Intertexts\n\n- Acts 13:33 (quoted by)\n\n## Notes\n");
+check("insert: a deeper heading stays inside the section",
+  addIntertextLine("## Intertexts\n- A 1:1\n### Later\n- B 2:2\n## Notes\n", L), "## Intertexts\n- A 1:1\n### Later\n- B 2:2\n- Acts 13:33 (quoted by)\n\n## Notes\n");
+check("insert: no section, adds one at the end",
+  addIntertextLine("---\ntags: x\n---\nText.\n\n\n", L), "---\ntags: x\n---\nText.\n\n## Intertexts\n\n- Acts 13:33 (quoted by)\n");
+check("insert: heading name from settings",
+  addIntertextLine("Text.", L, ["Cross-references"]), "Text.\n\n## Cross-references\n\n- Acts 13:33 (quoted by)\n");
+check("insert: matching heading in a code block is skipped",
+  addIntertextLine("```\n## Intertexts\n```\n", L), "```\n## Intertexts\n```\n\n## Intertexts\n\n- Acts 13:33 (quoted by)\n");
+check("insert: CRLF note keeps CRLF",
+  addIntertextLine("## Intertexts\r\n- A 1:1\r\n", L), "## Intertexts\r\n- A 1:1\r\n- Acts 13:33 (quoted by)\r\n");
+
 console.log(fail ? `${fail} failed, ${pass} passed` : `All ${pass} passed`);
 process.exit(fail ? 1 : 0);

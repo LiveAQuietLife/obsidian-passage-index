@@ -88,6 +88,61 @@ function readIntertexts(lines, bodyRefs, headings) {
   return { intertexts, openTasks };
 }
 
+// ---- Writing intertext lines (Add intertext…) ----------------------------------------
+// The kind words a line uses, forward and reverse ("quotes" / "quoted by").
+const KIND_WORDS = {
+  quotes:       ["quotes", "quoted by"],
+  "alludes to": ["alludes to", "alluded to by"],
+  echoes:       ["echoes", "echoed by"],
+};
+
+// One line for an Intertexts section, in the form readLine reads back:
+//   - Acts 13:33 (quoted by; Bratcher 1991, 29) — raising Jesus
+// relation: a RELATION key ("unspecified" or empty for no kind); reverse: the other text uses this one.
+function intertextLine({ passage, relation, reverse, citation, description }) {
+  const kind = relation && KIND_WORDS[relation] ? KIND_WORDS[relation][reverse ? 1 : 0] : "";
+  // Parentheses or ";" inside the citation would break how the line is read back.
+  const cite = (citation || "").replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+  const desc = (description || "").replace(/\s+/g, " ").trim();
+  const inner = [kind, cite].filter(Boolean).join("; ");
+  return `- ${(passage || "").trim()}${inner ? ` (${inner})` : ""}${desc ? ` — ${desc}` : ""}`;
+}
+
+// Adds a line at the end of the note's Intertexts section (the first heading matching
+// `headings`, any level; it ends at the next heading of the same or higher level). With no
+// such section, adds "## Intertexts" at the end of the note. Keeps the note's line endings.
+function addIntertextLine(text, line, headings) {
+  const names = new Set((headings?.length ? headings : INTERTEXT_HEADINGS).map((s) => s.trim().toLowerCase()));
+  const nl = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r?\n/);
+  const heading = (l) => l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+  // Skip frontmatter and fenced code, where a "## Intertexts" line isn't a heading.
+  let start = -1, level = 0, fence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (i === 0 && lines[0] === "---") { const e = lines.indexOf("---", 1); if (e > 0) { i = e; continue; } }
+    if (/^\s*(```|~~~)/.test(lines[i])) { fence = !fence; continue; }
+    const h = !fence && heading(lines[i]);
+    if (h && names.has(h[2].toLowerCase())) { start = i; level = h[1].length; break; }
+  }
+  if (start < 0) {
+    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    const name = (headings?.length ? headings : INTERTEXT_HEADINGS)[0].trim();
+    return [...lines, ...(lines.length ? [""] : []), `## ${name}`, "", line, ""].join(nl);
+  }
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    const h = lines[i].match(/^(#{1,6})\s/);
+    if (h && h[1].length <= level) { end = i; break; }
+  }
+  let at = start;
+  for (let i = end - 1; i > start; i--) if (lines[i].trim()) { at = i; break; }
+  const add = at === start ? ["", line] : [line];
+  lines.splice(at + 1, 0, ...add);
+  const next = at + 1 + add.length;
+  if (next < lines.length && lines[next].trim()) lines.splice(next, 0, "");
+  return lines.join(nl);
+}
+
 class PassageIndex {
   // opts (read live, so setting changes apply on the next re-index):
   //   ignorePhrases: strings that look like references but aren't citations ("Mark 1–8" as a book title)
@@ -471,4 +526,4 @@ function sortTopics(topics) {
     (MATCH[a.via[0].match].rank - MATCH[b.via[0].match].rank) || name(a.path).localeCompare(name(b.path)));
 }
 
-export { PassageIndex, matchType, MATCH, RELATION, INTERTEXT_HEADINGS, readLine, sortTopics };
+export { PassageIndex, matchType, MATCH, RELATION, INTERTEXT_HEADINGS, KIND_WORDS, readLine, intertextLine, addIntertextLine, sortTopics };

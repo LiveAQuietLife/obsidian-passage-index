@@ -3,7 +3,7 @@ import { Plugin, ItemView, PluginSettingTab, Setting, TFile, TFolder, MarkdownVi
 import { StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { createReader, format } from "./reader.js";
-import { PassageIndex, sortTopics, INTERTEXT_HEADINGS } from "./passage-index.js";
+import { PassageIndex, sortTopics, INTERTEXT_HEADINGS, intertextLine, addIntertextLine } from "./passage-index.js";
 import { passageText, trimBible, sectionOf, translationInfo, downloadUrl, TRANSLATIONS, LICENSES } from "./bible.js";
 import { BOOKS } from "./books.js";
 import { coverage, alsoCited, marks, level } from "./coverage.js";
@@ -203,9 +203,23 @@ class PassageIndexPlugin extends Plugin {
         if (t.add.length) this.setIgnored(t.file, t.add, true); else this.setIgnored(t.file, t.remove, false);
       },
     });
+    this.addCommand({
+      id: "add-intertext", name: "Add intertext…",
+      editorCallback: (editor, info) => {
+        if (!(info?.file instanceof TFile)) return;
+        const t = this.ignoreTargets(editor, info.file);
+        this.addIntertext(info.file, t ? [...t.add, ...t.remove][0] : null);
+      },
+    });
     // Right-click a reference (or select one or more) to add it to, or remove it from, the note's ignore property.
     this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor, info) => {
       const t = this.ignoreTargets(editor, info?.file);
+      // Add intertext… : on a reference (prefilled with it), or anywhere in a note with a main passage.
+      const at = t && [...t.add, ...t.remove][0];
+      if (at || (info?.file instanceof TFile && this.index.files.get(info.file.path)?.main?.length)) {
+        menu.addItem((i) => i.setTitle(at ? `Passage Index: add ${format(at)} as an intertext…` : "Passage Index: add an intertext…")
+          .setIcon("arrow-right-left").onClick(() => this.addIntertext(info.file, at || null)));
+      }
       if (!t) return;
       const list = (rs) => rs.map(format).join(", ");
       if (t.add.length) menu.addItem((i) => i.setTitle(`Passage Index: ignore ${list(t.add)} in this note`).setIcon("eye-off")
@@ -572,6 +586,24 @@ class PassageIndexPlugin extends Plugin {
 
   saveRabbitTrail(ref, fromFile) {
     new RabbitTrailModal(this.app, this, ref, fromFile).open();
+  }
+
+  // ---- Add intertext… --------------------------------------------------------------------
+  // A small window that writes one line into the note's Intertexts section, so nobody has to
+  // learn the syntax. ref: the other passage to start with (optional).
+  addIntertext(file, ref) {
+    if (!(file instanceof TFile) || file.extension !== "md") return;
+    new IntertextModal(this.app, this, file, ref).open();
+  }
+
+  async writeIntertext(file, line) {
+    await this.app.vault.process(file, (t) => addIntertextLine(t, line, this.settings.intertextHeadings));
+    // Open the pane's Intertexts section for this note, so the new line is seen.
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      const st = leaf.view?.openState;
+      if (st) st.set(file.path, { ...(st.get(file.path) || {}), __intertexts: true });
+    }
+    new Notice(`Intertext added to ${file.basename}`);
   }
 
   // Adds a line at the end of the rabbit-trails note (making the note, and its folder, if needed).
@@ -1901,11 +1933,16 @@ ${was}` : `Section: ${b.s.title}`);
     });
   }
 
-  // Intertext Register: Uses / Used by / Open, above the passage groups. Hidden when empty.
+  // Intertext Register: This passage uses / Used by / Open questions, above the passage groups.
+  // With none yet, a note with a main passage gets a folded section with a hint and Add intertext…;
+  // other notes show nothing.
   renderIntertexts(el, file) {
     const { uses, usedBy, open } = this.plugin.index.intertextsFor(file.path);
-    if (!uses.length && !usedBy.length && !open.length) return;
-    const det = el.createEl("details", { cls: "pi-group pi-intertexts" });
+    const main = this.plugin.index.files.get(file.path)?.main || [];
+    const none = !uses.length && !usedBy.length && !open.length;
+    if (none && !main.length) return;
+    const here = main.length ? main.map(format).join("; ") : "This note";
+    const det = el.createEl("details", { cls: "pi-group pi-intertexts" + (none ? " pi-it-none" : "") });
     const remembered = this.openState.get(file.path) || {};
     det.open = remembered["__intertexts"] ?? false;
     det.addEventListener("toggle", () => {
@@ -1916,15 +1953,35 @@ ${was}` : `Section: ${b.s.title}`);
     const sum = det.createEl("summary");
     setIcon(sum.createSpan({ cls: "pi-chevron" }), "chevron-right");
     sum.createSpan({ cls: "pi-passage", text: "Intertexts" });
-    sum.createSpan({ cls: "pi-count", text: String(uses.length + usedBy.length + open.length) });
+    if (none) sum.createSpan({ cls: "pi-folder", text: "none yet" });
+    else sum.createSpan({ cls: "pi-count", text: String(uses.length + usedBy.length + open.length) });
+    sum.addEventListener("contextmenu", (evt) => {
+      evt.preventDefault();
+      const menu = new Menu();
+      menu.addItem((i) => i.setTitle("Add intertext…").setIcon("arrow-right-left").onClick(() => this.plugin.addIntertext(file)));
+      menu.showAtMouseEvent(evt);
+    });
     const list = det.createDiv({ cls: "pi-list" });
+    const addLink = (text) => {
+      const a = list.createDiv({ cls: "pi-none pi-it-add" }).createEl("a", { cls: "pi-start-note", text, href: "#" });
+      a.addEventListener("click", (evt) => { evt.preventDefault(); this.plugin.addIntertext(file); });
+    };
+    if (none) {
+      list.createDiv({ cls: "pi-none", text: `No intertexts yet. Record a text that ${here} quotes, alludes to or echoes, or one that uses it. You can also right-click a reference in the note, or a passage below.` });
+      addLink("Add intertext…");
+      return;
+    }
 
     // Uses rows go to the target passage's note (n.home); other rows go to the line in the other note.
     const row = (n, fill) => {
       const item = list.createDiv({ cls: "pi-item pi-it-row" });
       fill(item);
       const go = n.home ? { ...n, path: n.home, line: -1 } : n;
-      if (n.home === null) item.setAttr("aria-label", "No note for this passage yet; opens the line in this note");
+      // The link as a sentence ("Acts 13:33 quotes Psalms 2:7–9"), so the direction is never in doubt.
+      const verb = n.relation === "unspecified" ? "is connected to" : n.relation;
+      const said = n.side === "uses" ? `${here} ${verb} ${n.passage}. ` : n.side === "usedBy" ? `${n.passage} ${verb} ${here}. ` : "";
+      const tip = said + (n.home === null ? "No note for this passage yet; opens the line in this note." : "");
+      if (tip) item.setAttr("aria-label", tip.trim());
       item.addEventListener("click", () => this.plugin.openResult(go.path, go.line, go.col, go.refText));
       item.addEventListener("contextmenu", (evt) => { evt.preventDefault(); this.itemMenu(evt, go, file); });
       item.addEventListener("mouseover", (event) => {
@@ -1934,24 +1991,28 @@ ${was}` : `Section: ${b.s.title}`);
         });
       });
     };
-    const relTag = (parent, rel) => parent.createSpan({ cls: `pi-tag pi-rel pi-rel-${rel.replace(/\s+/g, "-")}`, text: rel });
+    // Under "This passage uses" the tag reads passive ("2 Samuel 7:14 · alluded to"); under "Used by"
+    // active ("Acts 13:33 · quotes"), so each row reads the right way round.
+    const PASSIVE = { quotes: "quoted", "alludes to": "alluded to", echoes: "echoed" };
+    const relTag = (parent, rel, passive) => parent.createSpan({ cls: `pi-tag pi-rel pi-rel-${rel.replace(/\s+/g, "-")}`,
+      text: rel === "unspecified" ? "kind not said" : passive ? PASSIVE[rel] : rel });
     const extra = (item, n) => {
       const bits = [n.description, n.citation && `(${n.citation})`].filter(Boolean).join(" ");
       if (bits) item.createDiv({ cls: "pi-line", text: clip(bits, 140, false) });
     };
 
     if (uses.length) {
-      list.createDiv({ cls: "pi-it-head", text: "Uses" });
-      for (const n of uses) row(n, (item) => {
+      list.createDiv({ cls: "pi-it-head", text: main.length ? "This passage uses" : "This note uses" });
+      for (const n of uses) row({ ...n, side: "uses" }, (item) => {
         const top = item.createDiv({ cls: "pi-item-top" });
         top.createSpan({ cls: "pi-name", text: n.passage });
-        relTag(top.createSpan({ cls: "pi-meta" }), n.relation);
+        relTag(top.createSpan({ cls: "pi-meta" }), n.relation, true);
         extra(item, n);
       });
     }
     if (usedBy.length) {
       list.createDiv({ cls: "pi-it-head", text: "Used by" });
-      for (const n of usedBy) row(n, (item) => {
+      for (const n of usedBy) row({ ...n, side: "usedBy" }, (item) => {
         const top = item.createDiv({ cls: "pi-item-top" });
         top.createSpan({ cls: "pi-name", text: n.passage });
         const meta = top.createSpan({ cls: "pi-meta" });
@@ -1962,7 +2023,7 @@ ${was}` : `Section: ${b.s.title}`);
       });
     }
     if (open.length) {
-      list.createDiv({ cls: "pi-it-head", text: "Open" });
+      list.createDiv({ cls: "pi-it-head", text: "Open questions" });
       for (const n of open) row(n, (item) => {
         item.addClass("pi-open");
         const text = plainMarkdown(n.lineText.replace(/\s*#intertext\b/gi, ""));
@@ -1978,6 +2039,7 @@ ${was}` : `Section: ${b.s.title}`);
         item.createDiv({ cls: "pi-folder", text: n.noteName });
       });
     }
+    addLink("Add intertext…");
   }
 
   // Right-click on a passage heading.
@@ -1994,6 +2056,9 @@ ${was}` : `Section: ${b.s.title}`);
     }
     if (!homes.length) menu.addItem((i) => i.setTitle(`Start a note on ${g.label}…`).setIcon("file-plus").onClick(() => this.plugin.startNote(g.ref, file)));
     menu.addItem((i) => i.setTitle("Save as a rabbit trail…").setIcon("bookmark-plus").onClick(() => this.plugin.saveRabbitTrail(g.ref, file)));
+    // Not for the note's own passage (a note can't be its own intertext).
+    const own = (this.plugin.index.files.get(file.path)?.main || []).some((m) => covers(m, g.ref) || covers(g.ref, m));
+    if (!own) menu.addItem((i) => i.setTitle(`Add ${g.label} as an intertext…`).setIcon("arrow-right-left").onClick(() => this.plugin.addIntertext(file, g.ref)));
     menu.addSeparator();
     if (addOpenIn(menu, this.plugin, g.ref)) menu.addSeparator();
 
@@ -2509,6 +2574,142 @@ class RabbitTrailModal extends Modal {
     } catch (e) {
       console.error("Passage Index: couldn't save the rabbit trail:", e);
       new Notice(`Passage Index: couldn't save to ${this.plugin.rabbitPath()}. ${e.message || ""}`);
+    }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// Add intertext…: the direction is chosen as a plain sentence ("Acts 13:33 quotes Psalms 2:7–9"),
+// so nobody has to work out "quotes" vs "quoted by"; the window writes the line.
+const INTERTEXT_KINDS = [
+  // [key, relation, reverse]
+  ["quotes", "quotes", false], ["alludes to", "alludes to", false], ["echoes", "echoes", false],
+  ["quoted by", "quotes", true], ["alluded to by", "alludes to", true], ["echoed by", "echoes", true],
+  ["unspecified", "unspecified", false],
+];
+
+class IntertextModal extends Modal {
+  constructor(app, plugin, file, ref) {
+    super(app);
+    this.plugin = plugin;
+    this.file = file;
+    this.main = plugin.index.files.get(file.path)?.main || [];
+    this.passage = ref ? format(ref) : "";
+    this.citation = "";
+    this.description = "";
+    // Start with the likelier direction: an earlier book is usually the one used.
+    this.kind = ref && this.main.length && ref.book > this.main[0].book && ref.book <= 66 ? "quoted by" : "quotes";
+  }
+
+  here() { return this.main.length ? this.main.map(format).join("; ") : "This note"; }
+
+  sentence(key, other) {
+    const here = this.here();
+    switch (key) {
+      case "quotes": return `${here} quotes ${other}`;
+      case "alludes to": return `${here} alludes to ${other}`;
+      case "echoes": return `${here} echoes ${other}`;
+      case "quoted by": return `${other} quotes ${here}`;
+      case "alluded to by": return `${other} alludes to ${here}`;
+      case "echoed by": return `${other} echoes ${here}`;
+      default: return `${here} and ${other} are connected (kind not said)`;
+    }
+  }
+
+  line() {
+    const [, relation, reverse] = INTERTEXT_KINDS.find(([k]) => k === this.kind);
+    return intertextLine({ passage: this.passage, relation, reverse, citation: this.citation, description: this.description });
+  }
+
+  hasSection() {
+    const names = new Set((this.plugin.settings.intertextHeadings?.length ? this.plugin.settings.intertextHeadings : INTERTEXT_HEADINGS)
+      .map((s) => s.trim().toLowerCase()));
+    return (this.app.metadataCache.getFileCache(this.file)?.headings || []).some((h) => names.has(h.heading.trim().toLowerCase()));
+  }
+
+  onOpen() {
+    this.titleEl.setText("Add intertext");
+    this.modalEl.addClass("pi-start-modal", "pi-intertext-modal");
+    const el = this.contentEl;
+    el.createDiv({ cls: "setting-item-description pi-settings-intro",
+      text: `Record a text that ${this.main.length ? this.here() : "this note"} quotes, alludes to or echoes, or one that quotes, alludes to or echoes it.` });
+    let addBtn, kindSelect;
+    const check = createDiv({ cls: "setting-item-description pi-start-check" });
+    const summary = createDiv({ cls: "pi-it-summary" });
+    const preview = createDiv({ cls: "pi-start-preview" });
+    const update = () => {
+      check.empty(); summary.empty(); preview.empty();
+      const text = this.passage.trim();
+      const refs = text ? this.plugin.reader.parse(text) : [];
+      const r = refs[0];
+      const other = r && r.start === 0 ? format(r) : (text || "the other passage");
+      // The direction list reads as sentences with the actual passages in them.
+      if (kindSelect) for (const o of kindSelect.options) o.text = this.sentence(o.value, other);
+      const overlapsMain = r && this.main.some((m) => m.book === r.book && lo(m) <= hi(r) && lo(r) <= hi(m));
+      this.problem = !text ? "Enter the other passage."
+        : !r || r.start !== 0 ? "Passage Index doesn't read a passage at the start of this, so the line wouldn't show in the pane."
+        : overlapsMain ? `${other} is inside this note's own passage (${this.here()}).` : null;
+      if (this.problem) check.createDiv({ cls: "mod-warning", text: this.problem });
+      else {
+        if (refs.length > 1) check.createDiv({ text: `One passage per line: only ${other} would be read. Add the others one at a time.` });
+        const [, , reverse] = INTERTEXT_KINDS.find(([k]) => k === this.kind);
+        const dup = (this.plugin.index.files.get(this.file.path)?.intertexts || [])
+          .some((x) => x.target.book === r.book && lo(x.target) === lo(r) && hi(x.target) === hi(r) && !!x.reverse === reverse);
+        if (dup) check.createDiv({ text: `This note already lists ${other} under Intertexts.` });
+        summary.createDiv({ cls: "pi-it-sentence", text: this.sentence(this.kind, other) + "." });
+        const [hereLabel, thereLabel] = this.kind === "unspecified" || !reverse ? ["This passage uses", "Used by"] : ["Used by", "This passage uses"];
+        summary.createDiv({ cls: "setting-item-description",
+          text: `Shows in this note's pane under “${hereLabel}”, and in a note on ${other} under “${thereLabel}”, if you have or write one.` });
+      }
+      preview.createDiv({ cls: "pi-start-preview-label",
+        text: this.hasSection() ? `Adds this line to the Intertexts section of ${this.file.basename}:` : `Adds an Intertexts section to ${this.file.basename} with this line:` });
+      preview.createEl("pre", { text: this.line() });
+      addBtn?.setDisabled(!!this.problem);
+    };
+    const enter = (input) => input.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" && !evt.isComposing) { evt.preventDefault(); this.save(); }
+    });
+    new Setting(el).setName("Other passage").setDesc("One passage, e.g. Acts 13:33.").addText((t) => {
+      t.setValue(this.passage).setPlaceholder("e.g. Acts 13:33").onChange((v) => { this.passage = v; update(); });
+      enter(t.inputEl);
+      if (!this.passage) window.setTimeout(() => t.inputEl.focus(), 0);
+    });
+    new Setting(el).setName("How they connect").addDropdown((d) => {
+      for (const [k] of INTERTEXT_KINDS) d.addOption(k, k);
+      d.setValue(this.kind).onChange((v) => { this.kind = v; update(); });
+      kindSelect = d.selectEl;
+      kindSelect.addClass("pi-it-kind");
+      if (this.passage) window.setTimeout(() => kindSelect.focus(), 0);
+    });
+    new Setting(el).setName("Source").setDesc("Who points it out, with page. Optional.").addText((t) => {
+      t.setPlaceholder("e.g. Beale 1999, 259").onChange((v) => { this.citation = v; update(); });
+      enter(t.inputEl);
+    });
+    new Setting(el).setName("Note").setDesc("A few words on the link. Optional.").addText((t) => {
+      t.setPlaceholder("e.g. the Davidic covenant").onChange((v) => { this.description = v; update(); });
+      t.inputEl.addClass("pi-rabbit-why");
+      enter(t.inputEl);
+    });
+    el.appendChild(check);
+    el.appendChild(summary);
+    el.appendChild(preview);
+    new Setting(el)
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) => { addBtn = b; b.setButtonText("Add").setCta().onClick(() => this.save()); });
+    update();
+  }
+
+  async save() {
+    if (this.problem || this.busy) return;
+    this.busy = true;
+    const line = this.line();
+    this.close();
+    try {
+      await this.plugin.writeIntertext(this.file, line);
+    } catch (e) {
+      console.error("Passage Index: couldn't add the intertext:", e);
+      new Notice(`Passage Index: couldn't add the intertext to ${this.file.basename}. ${e.message || ""}`);
     }
   }
 

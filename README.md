@@ -49,6 +49,7 @@ The pane has four tabs: **Index**, **Map**, **Rabbit trails** and **Gaps**. The 
 - **Show in this note:** jumps to where the note you're reading cites the passage.
 - Open the note about this passage, copy the passage, copy links to all its notes as a list, or open them all in tabs.
 - **Start a note on …** (when no note is about this passage) and **Save as a rabbit trail…**.
+- **Add … as an intertext…** (see [Intertexts](#intertexts)).
 - Collapse or expand the groups.
 
 ### Trail
@@ -103,30 +104,27 @@ Lists topic notes that share a passage with the note you're reading, unlinked on
 
 ### Intertexts
 
-Record where a passage quotes, alludes to or echoes another text, and the pane shows it from both ends.
+Record where one passage quotes, alludes to or echoes another, and the pane shows the link from both ends.
 
-Add an `## Intertexts` heading to a note (any level works; to use another name, such as *Intertextual Connections*, add it in the Index tab of settings) and list one intertext per line. The first reference on each line is the passage being used:
+**The easy way: Add intertext….** Right-click a reference in your note, or a passage heading in the pane, and choose **Add … as an intertext…**. You can also use the command **Passage Index: Add intertext…** or the **Add intertext…** link in the pane's Intertexts section. A small window asks for:
 
-```markdown
-## Intertexts
+- **Other passage:** one passage, e.g. *Acts 13:33*.
+- **How they connect:** a plain sentence with both passages in it, e.g. *Acts 13:33 quotes Psalms 2:7–9* or *Psalms 2:7–9 alludes to 2 Samuel 7:14*. Choose whichever is true; you don't need to know which end you're on.
+- **Source** and **Note:** who points it out (*Bratcher 1991, 29*) and a few words on the link. Both optional.
 
-- [[Isaiah 56v7]] (quotes; France 2002, 445)
-- [[Jeremiah 7v11]] (quotes) — "den of robbers"
-- [[Jeremiah 8v13]] (echoes; Edwards 2002, 342)
-- Zech 14:21 (alludes to) — no trader in the house of the Lord
-```
+It shows the line it will write, and where the link will show, before you choose **Add**. The line goes at the end of the note's Intertexts section, and the section is made if the note doesn't have one.
 
-**The word in parentheses** sets the kind of use. Passage Index looks only at the start of the word, so these forms all work:
+**What the pane shows** in the Intertexts section:
 
-| Kind | Write any of |
-|---|---|
-| quotes | quotes, quoted, quotation |
-| alludes to | alludes to, allusion, allusive |
-| echoes | echoes, echo |
+- **This passage uses:** the texts this passage quotes, alludes to or echoes, e.g. *2 Samuel 7:14 · alluded to*. Clicking one opens that passage's note (e.g. `Isaiah 56v7`), if you have one.
+- **Used by:** the texts that quote, allude to or echo this passage, e.g. *Acts 13:33 · quotes*. They come from this note's own lines and from other notes that point to this note's main passage. Open `Isaiah 56v7` and you see that Mark 11:17 quotes it.
+- **Open questions:** other notes' unfinished `#intertext` tasks naming this passage.
 
-Anything else (for example *mentions*), or no parentheses, is listed without a kind. After a `;`, the rest is the citation. After ` — `, a short description.
+Point at a row to read the link as a sentence (*Acts 13:33 quotes Psalms 2:7–9*). A link recorded in both notes is listed once. A passage note with no intertexts yet shows a folded **Intertexts · none yet** section with the **Add intertext…** link.
 
-**From the other end.** Studying the passage that gets used, and don't have notes for the texts that use it? Add *by* to the kind: *quoted by*, *alluded to by*, *echoed by*. In `Psalm 2v7-9`:
+#### Writing the lines yourself
+
+The window writes ordinary lines you can also type or edit. Under an `## Intertexts` heading (any level works; to use another name, such as *Intertextual Connections*, add it in the Index tab of settings), one passage per line:
 
 ```markdown
 ## Intertexts
@@ -136,19 +134,15 @@ Anything else (for example *mentions*), or no parentheses, is listed without a k
 - Matt 3:17 (alluded to by) — the baptism
 ```
 
-The *by* lines show under **Used by** in this note and under **Uses** in a note on Acts 13:33, if you write one later. A link recorded at both ends is listed once.
+- **The word in parentheses** says how they connect. *quotes*, *alludes to*, *echoes*: this passage uses the one listed. Add *by* (*quoted by*, *alluded to by*, *echoed by*) when the listed passage uses this one. Passage Index looks only at the start of the word, so *quoted*, *quotation*, *allusion* and *echo* work too. Anything else (for example *mentions*), or no parentheses, is listed without a kind.
+- After a `;`, the rest is the source. After ` — `, a short note.
+- Only the first reference on a line is read, so put each passage on its own line.
 
 **Open questions** go anywhere in a note as tasks tagged `#intertext`:
 
 ```markdown
 - [ ] Does Jer 8:13's fig imagery explain the fig tree? #intertext
 ```
-
-**What the pane shows** in the Intertexts section:
-
-- **Uses:** this note's own intertext lines. Clicking one opens the used passage's note (e.g. `Isaiah 56v7`), if you have one.
-- **Used by:** other notes' intertext lines that point into this note's main passage. Open `Isaiah 56v7` and you see that Mark 11:17 quotes it. This note's own *by* lines show here too.
-- **Open:** other notes' unfinished `#intertext` tasks naming this passage.
 
 ![The Intertexts section listing the passages this note alludes to and echoes](images/intertexts.jpg)
 
