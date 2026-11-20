@@ -1163,7 +1163,10 @@ function drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll) {
   const b = Math.max(52, (Math.max(left.length, right.length) - 1) * row / 2);
   const H = 2 * b + 2 * pad + 8, cy = H / 2;
   const svg = wrap.createSvg("svg", { cls: "pi-star", attr: { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img",
-    "aria-label": `Verse star for ${format(focus)}: ${plural(dots.length, "linked passage")}` } });
+    "aria-roledescription": "verse star" } });
+  // Tooltips via <title>: Obsidian's aria-label tooltips assume HTML elements (isShown) and throw on SVG.
+  const tip = (el, text) => { el.createSvg("title").textContent = text; };
+  tip(svg, `Verse star for ${format(focus)}: ${plural(dots.length, "linked passage")}`);
   const place = (side, list) => list.map((d, i) => {
     const y = list.length === 1 ? cy : cy - b + (2 * b * i) / (list.length - 1);
     const t = (y - cy) / (b / 0.9);
@@ -1179,16 +1182,16 @@ function drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll) {
   for (const p of pts) {
     const n = p.d.notes.length, label = shortRef(p.d.ref);
     const selected = st.sel === p.d.key;
-    const g = lines.createSvg("g", { cls: classes(`pi-star-link ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (n < 2 && showAll ? " is-thin" : "")),
-      attr: { "aria-label": `${format(focus)} and ${format(p.d.ref)}: ${plural(n, "note")}` } });
+    const g = lines.createSvg("g", { cls: classes(`pi-star-link ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (n < 2 && showAll ? " is-thin" : "")) });
+    tip(g, `${format(focus)} and ${format(p.d.ref)}: ${plural(n, "note")}`);
     const xy = { x1: cx, y1: cy, x2: p.x, y2: p.y };
     g.createSvg("line", { cls: "pi-star-line", attr: { ...xy, "stroke-width": width(n) } });
     g.createSvg("line", { cls: "pi-star-hit", attr: { ...xy, "stroke-width": 10 } });
     g.addEventListener("click", () => { st.sel = selected ? null : p.d.key; opts.rerender(); });
 
     const can = p.d.book <= 66;
-    const node = nodes.createSvg("g", { cls: classes(`pi-star-node ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (can ? "" : " is-fixed")),
-      attr: { "aria-label": can ? `${format(p.d.ref)}: ${plural(n, "note")}. Click to put it in the centre.` : `${format(p.d.ref)}: ${plural(n, "note")}` } });
+    const node = nodes.createSvg("g", { cls: classes(`pi-star-node ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (can ? "" : " is-fixed")) });
+    tip(node, can ? `${format(p.d.ref)}: ${plural(n, "note")}. Click to put it in the centre.` : `${format(p.d.ref)}: ${plural(n, "note")}`);
     node.createSvg("circle", { attr: { cx: p.x, cy: p.y, r: 3 + Math.min(n, 4) * 0.8 } });
     const text = node.createSvg("text", { cls: "pi-star-text", attr: { x: p.x + p.side * 8, y: p.y, "text-anchor": p.side < 0 ? "end" : "start" } });
     text.textContent = label;
