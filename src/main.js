@@ -1236,14 +1236,10 @@ class PassagePane extends ItemView {
     }
     if (!file || file.extension !== "md") { el.createDiv({ cls: "pi-empty", text: "Open a note to see related passages." }); return; }
 
-    const groups = this.plugin.index.groupsFor(file.path);
-    // The rabbit-trails note has its own section, so it isn't listed under each passage too.
-    const rabbit = this.plugin.rabbitPath();
-    if (file.path !== rabbit) for (const g of groups) g.notes = g.notes.filter((n) => n.path !== rabbit);
     const head = el.createDiv({ cls: "pi-head" });
     const titleRow = head.createDiv({ cls: "pi-title-row" });
     titleRow.createDiv({ cls: "pi-title", text: file.basename });
-    const main = groups.filter((g) => g.isMain).map((g) => g.label);
+    const main = this.plugin.index.mainLabels(file.path);
     // A note in an excluded folder isn't read at all, so "no references" would mislead.
     const excludedBy = this.plugin.excludedBy(file.path);
     if (excludedBy) head.createDiv({ cls: "pi-sub", text: `In an excluded folder (${excludedBy})` });
@@ -1285,9 +1281,15 @@ class PassagePane extends ItemView {
     const hideChapter = hideBroad && this.plugin.settings.hideChapter;
     const isHidden = (n) => (hideBroad && n.broad) || (hideChapter && n.chapterOnly);
 
+    // Worked out only here, for the Index tab, and once: Topics reuses it (bug 8).
+    const groups = this.plugin.index.groupsFor(file.path);
+    // The rabbit-trails note has its own section, so it isn't listed under each passage too.
+    const rabbit = this.plugin.rabbitPath();
+    if (file.path !== rabbit) for (const g of groups) g.notes = g.notes.filter((n) => n.path !== rabbit);
+
     this.renderRabbitTrails(el, file);
     this.renderIntertexts(el, file);
-    this.renderTopics(el, file, isHidden);
+    this.renderTopics(el, file, isHidden, groups);
 
     if (!groups.length) { el.createDiv({ cls: "pi-empty", text: "No scripture references in this note." }); return; }
 
@@ -1692,8 +1694,8 @@ ${was}` : `Section: ${b.s.title}`);
   // Topics: every topic note reached through any passage this note cites, listed once.
   // Not-yet-linked topics come first; ones the note already links to are tagged "linked".
   // Hidden when there are none.
-  renderTopics(el, file, isHidden) {
-    const all = this.plugin.index.topicsFor(file.path, (p) => this.plugin.isTopic(p));
+  renderTopics(el, file, isHidden, groups) {
+    const all = this.plugin.index.topicsFor(file.path, (p) => this.plugin.isTopic(p), groups);
     if (!all.length) return;
     const links = this.app.metadataCache.resolvedLinks[file.path] || {};
     const topics = [];

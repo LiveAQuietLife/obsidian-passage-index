@@ -62,4 +62,18 @@ t("also cited: verse", () => {
   const b = alsoCited(ix, { book: 66, c: 1, v: 13 });
   assert.strictEqual(b.entries[0].book, 27); assert.strictEqual(b.entries[0].notes.length, 2);
 });
+t("alsoCited reused until a note changes (bug 16)", () => {
+  const ix = new PassageIndex(createReader(), {});
+  ix.setFile("a.md", "Rev 1:7; Dan 7:13.", "A");
+  const f = { book: 66, c: 1, v: 7 };
+  const a1 = alsoCited(ix, f), a2 = alsoCited(ix, { ...f });
+  assert.strictEqual(a1, a2);
+  assert.notStrictEqual(alsoCited(ix, f, { broadChapters: 5 }), a1); // options are part of the key
+  ix.setFile("b.md", "Rev 1:7; Zech 12:10.", "B");
+  const a3 = alsoCited(ix, f);
+  assert.notStrictEqual(a3, a1);
+  assert.strictEqual(a3.notes, 2); assert.strictEqual(a3.entries.length, 2);
+  ix.remove("b.md");
+  assert.strictEqual(alsoCited(ix, f).notes, 1);
+});
 console.log(`coverage: ${n} passed`);

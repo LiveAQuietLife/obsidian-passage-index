@@ -400,6 +400,14 @@ class PassageIndex {
       .sort((a, b) => (b.notes.length - a.notes.length) || (a.ref.book - b.ref.book) || (lo(a.ref) - lo(b.ref)) || (hi(a.ref) - hi(b.ref)));
   }
 
+  // The note's main passage(s) as labels, in Bible order (the pane header). Same labels as
+  // groupsFor's main groups, without working out the groups.
+  mainLabels(path) {
+    const main = [...(this.files.get(path)?.main || [])]
+      .sort((a, b) => (a.book - b.book) || (lo(a) - lo(b)) || (hi(a) - hi(b)));
+    return [...new Set(main.map(format))];
+  }
+
   // Groups for the pane (design: Option C).
   // Returns [{ key, label, ref, isMain, open, notes: [{ path, about, match, matchLabel,
   //            line, lineText, refText, more, otherGroups }] }]
@@ -513,9 +521,10 @@ class PassageIndex {
   // cites, each listed once with the passages it shares ("via"). isTopic(path) decides
   // what counts as a topic (the plugin reads frontmatter/folders), so this module stays
   // Obsidian-free. Filtering of broad/chapter-only matches is left to the caller.
-  topicsFor(path, isTopic) {
+  // groups: groupsFor(path) if the caller already has it (bug 8).
+  topicsFor(path, isTopic, groups = this.groupsFor(path)) {
     const topics = new Map();
-    for (const g of this.groupsFor(path)) {
+    for (const g of groups) {
       for (const n of g.notes) {
         if (!isTopic(n.path)) continue;
         if (!topics.has(n.path)) topics.set(n.path, { path: n.path, via: [] });
