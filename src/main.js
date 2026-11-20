@@ -1158,17 +1158,25 @@ function drawVerseStar(wrap, plugin, st, opts) {
   const showAll = st.all || fallback;
   const dots = showAll ? s.dots : strong;
 
+  // Two lines: which notes the star is built from, then what the dots are (user, 2026-11-20:
+  // "2+" read as if it were about the centre verse).
+  wrap.createDiv({ cls: "pi-star-sum", text: `${plural(s.notes, "note")} on ${here}${hubs}` });
   const bar = wrap.createDiv({ cls: "pi-star-bar" });
-  bar.createSpan({ cls: "pi-star-sum", text: `${plural(s.notes, "note")} on ${here}${hubs}` });
+  bar.createSpan({ cls: "pi-star-what", text: fallback
+    ? (s.notes === 1
+      ? `With one note, these are the ${plural(s.dots.length, "other passage")} it cites.`
+      : strong.length
+        ? `Only ${plural(strong.length, "passage")} cited by 2 or more of them, so all ${s.dots.length} they cite are shown.`
+        : `No passage is cited by 2 or more of them, so all ${s.dots.length} they cite are shown.`)
+    : st.all
+      ? `All ${s.dots.length} passages they cite; thicker lines: cited by more of them.`
+      : `${strong.length === 1 ? "1 passage" : `${strong.length} passages`} cited by 2 or more of them.` });
   if (!fallback && strong.length < s.dots.length) {
-    const sw = bar.createSpan({ cls: "pi-also-chip pi-star-switch", text: st.all ? "Shared by 2+ only" : `Show all ${s.dots.length}` });
+    const sw = bar.createSpan({ cls: "pi-also-chip pi-star-switch", text: st.all ? "Only 2 or more" : `Show all ${s.dots.length}` });
+    sw.setAttr("aria-label", st.all ? "Show only the passages cited by 2 or more of these notes"
+      : `Also show the ${plural(s.dots.length - strong.length, "passage")} cited by just one of these notes`);
     sw.addEventListener("click", () => { st.all = !st.all; opts.rerender(); });
   }
-  if (fallback) wrap.createDiv({ cls: "pi-star-note", text: s.notes === 1
-    ? `With one note, these are the ${plural(s.dots.length, "other passage")} it cites.`
-    : strong.length
-    ? `Only ${plural(strong.length, "link")} shared by 2 or more notes, so all ${s.dots.length} are shown.`
-    : `No link is shared by 2 or more notes, so all ${s.dots.length} are shown.` });
 
   drawStarSvg(wrap, opts, focus, dots, st, go, showAll);
 

@@ -344,7 +344,8 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 .passage-index .pi-star-back { padding: 2px; }
 .passage-index .pi-star-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .passage-index .pi-star-switch { padding-right: 7px; color: var(--text-muted); }
-.passage-index .pi-star-note { color: var(--text-faint); font-size: var(--font-ui-smaller); margin-top: 2px; }
+.passage-index .pi-star-sum { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.passage-index .pi-star-what { color: var(--text-faint); }
 .passage-index svg.pi-star { display: block; max-width: 340px; margin: 4px auto 0; overflow: visible; }
 .passage-index .pi-star-line { stroke: currentColor; stroke-linecap: round; opacity: 0.55; }
 .passage-index .pi-star-link.is-thin .pi-star-line { opacity: 0.3; }
