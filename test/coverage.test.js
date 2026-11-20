@@ -2,7 +2,7 @@
 const assert = require("assert");
 const { createReader } = require("../src/reader");
 const { PassageIndex } = require("../src/passage-index");
-const { coverage, alsoCited, marks, level, versesIn, chaptersIn } = require("../src/coverage");
+const { coverage, alsoCited, verseStar, marks, level, versesIn, chaptersIn } = require("../src/coverage");
 let n = 0;
 const t = (name, fn) => { fn(); n++; };
 
@@ -76,4 +76,49 @@ t("alsoCited reused until a note changes (bug 16)", () => {
   ix.remove("b.md");
   assert.strictEqual(alsoCited(ix, f).notes, 1);
 });
+
+// Verse star
+{
+  const { format } = require("../src/reader");
+  const ix = new PassageIndex(createReader(), {});
+  ix.setFile("p/Revelation 1v7-8.md", "Zech 12:10; Matt 24:30. Rev 1:4 and Dan 7.", "Revelation 1v7-8");
+  ix.setFile("q/Mourning.md", "Rev 1:7 recalls Zech 12:10-13:1 and John 19:37. Matt 24:30-31.", "Mourning");
+  ix.setFile("q/Smyrna.md", "Rev 1:7-8; Zech 12:12. Gen 1-50 is broad. Matt 1:1.", "Smyrna");
+  ix.setFile("p/Revelation - Index.md", "Rev 1:7; Zech 12:10; Isa 6:1.", "Revelation - Index");
+  ix.setFile("q/Other.md", "Rev 1:12; Isa 6:1.", "Other");
+  ix.setFile("q/Chapter only.md", "Rev 1; Isa 40:1.", "Chapter only");
+  const isHub = (p) => p.endsWith("Index.md");
+  const focus = { book: 66, c1: 1, v1: 7, c2: 1, v2: 7 };
+  const st = verseStar(ix, focus, { isHub, hubKey: "index" });
+  const label = (d) => format(d.ref);
+  t("star: notes on the verse; hubs, other verses and chapter-only notes left out", () => {
+    assert.strictEqual(st.notes, 3); assert.strictEqual(st.hubs, 1);
+    assert.ok(!st.dots.some((d) => d.book === 23)); // Isa 6:1 (hub), Isa 40:1 (note on Rev 1 only)
+    assert.ok(!st.dots.some((d) => d.book === 66)); // Rev 1:4: the focus chapter
+  });
+  t("star: other chapters of the focus book are kept", () => {
+    const ix2 = new PassageIndex(createReader(), {});
+    ix2.setFile("a.md", "Rev 1:7; Rev 1:4; Rev 2:10.", "A");
+    assert.deepStrictEqual(verseStar(ix2, focus).dots.map(label), ["Revelation 2:10"]);
+  });
+  t("star: overlapping ranges merge; the dot takes the most-cited, then narrowest form", () => {
+    const z = st.dots.find((d) => d.book === 38);
+    assert.strictEqual(label(z), "Zechariah 12:10");
+    assert.strictEqual(z.notes.length, 3); assert.strictEqual(z.forms, 3);
+    assert.deepStrictEqual(z.notes.find((n) => n.path === "q/Mourning.md").refs, ["12:10–13:1"]);
+    const m = st.dots.find((d) => d.book === 40 && d.ref.c1 === 24);
+    assert.strictEqual(label(m), "Matthew 24:30"); assert.strictEqual(m.notes.length, 2);
+  });
+  t("star: chapter-only and broad refs are not dots; Bible order", () => {
+    assert.deepStrictEqual(st.dots.map(label), ["Zechariah 12:10", "Matthew 1:1", "Matthew 24:30", "John 19:37"]);
+  });
+  t("star: a range focus; reuse until a note changes", () => {
+    const r = verseStar(ix, { book: 38, c1: 12, v1: 10, c2: 12, v2: 14 });
+    assert.strictEqual(r.notes, 4); // the hub counts when isHub isn't given
+    assert.ok(r.dots.some((d) => d.book === 66 && d.ref.v1 === 7));
+    assert.strictEqual(verseStar(ix, focus, { isHub, hubKey: "index" }), st);
+    ix.setFile("q/New.md", "Rev 1:7; Ps 2:9.", "New");
+    assert.strictEqual(verseStar(ix, focus, { isHub, hubKey: "index" }).notes, 4);
+  });
+}
 console.log(`coverage: ${n} passed`);

@@ -207,6 +207,83 @@ function findAlsoCited(index, focus, { broadChapters = 2, skip = null } = {}) {
   return { notes: total, entries };
 }
 
+// Verse star (0.4.0): the verses that the notes on a passage also cite, one dot per passage.
+// focus = { book, c1, v1, c2, v2 } (a verse or a verse range). Like alsoCited, at verse level:
+// - A note is "on" the focus if a narrow verse reference of it overlaps the focus. Chapter-only
+//   and broad references (more than broadChapters chapters) don't count, either way.
+// - Its other narrow verse references become dots, except those touching the focus chapter(s)
+//   (the verse grid above already shows them).
+// - Overlapping references in a book merge into one dot (Zech 12:10 and Zech 12:10–13:1);
+//   the dot is labelled with the form most notes cite (then the narrowest, then the first).
+// - skip: a path left out (the rabbit-trails note). isHub(path): notes left out because they
+//   only gather other notes' references (an index or book note); hubKey names isHub's
+//   setting for the cache.
+// Returns { notes, hubs, dots: [{ key, book, ref, forms, notes: [{ path, line, col, refText,
+//   lineText, lineCol, refs: ["12:10", "12:10–13:1"] }] }] }: dots in Bible order, each dot's
+//   notes by name. notes / hubs: how many notes are on the focus / were left out as hubs.
+// Reused until a note changes (index.version); treat it as read-only.
+function verseStar(index, focus, opts = {}) {
+  const key = `star|${index.version}|${focus.book}:${focus.c1}:${focus.v1}:${focus.c2}:${focus.v2}|${opts.broadChapters ?? 2}|${opts.skip ?? ""}|${opts.hubKey ?? ""}`;
+  const cache = index._also?.version === index.version ? index._also : (index._also = { version: index.version, results: new Map() });
+  if (!cache.results.has(key)) {
+    if (cache.results.size >= 50) cache.results.clear();
+    cache.results.set(key, findVerseStar(index, focus, opts));
+  }
+  return cache.results.get(key);
+}
+
+const vlo = (r) => r.c1 * 1000 + (r.v1 ?? 0);
+const vhi = (r) => r.c2 * 1000 + (r.v2 ?? 999);
+
+function findVerseStar(index, focus, { broadChapters = 2, skip = null, isHub = null } = {}) {
+  const usable = (r) => r.v1 != null && r.c2 - r.c1 + 1 <= broadChapters;
+  const onFocus = (r) => usable(r) && r.book === focus.book && vlo(r) <= vhi(focus) && vlo(focus) <= vhi(r);
+  const inFocusChapters = (r) => r.book === focus.book && r.c1 <= focus.c2 && focus.c1 <= r.c2;
+  const cited = []; // { path, r }
+  let total = 0, hubs = 0;
+  for (const path of index.byBook.get(focus.book) || []) {
+    if (path === skip) continue;
+    const e = index.files.get(path);
+    if (!e || !e.refs.some(onFocus)) continue;
+    if (isHub?.(path)) { hubs++; continue; }
+    total++;
+    // Reading order, with the filename's main passage (line -1) last, so a note's first
+    // citation of a dot is the one in its text.
+    const refs = [...e.refs].sort((a, b) => ((a.line < 0) - (b.line < 0)) || (a.line - b.line) || ((a.col ?? 0) - (b.col ?? 0)));
+    for (const r of refs) if (usable(r) && !inFocusChapters(r)) cited.push({ path, r });
+  }
+  // Merge overlapping references book by book: sort by start, extend while they overlap.
+  cited.sort((a, b) => (a.r.book - b.r.book) || (vlo(a.r) - vlo(b.r)) || (vhi(a.r) - vhi(b.r)));
+  const clusters = [];
+  for (const x of cited) {
+    const last = clusters[clusters.length - 1];
+    if (last && last.book === x.r.book && vlo(x.r) <= last.hi) { last.items.push(x); last.hi = Math.max(last.hi, vhi(x.r)); }
+    else clusters.push({ book: x.r.book, hi: vhi(x.r), items: [x] });
+  }
+  const name = (p) => p.split("/").pop();
+  const dots = clusters.map((cl) => {
+    const notes = new Map(), forms = new Map();
+    for (const { path, r } of cl.items) {
+      const fk = `${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
+      if (!forms.has(fk)) forms.set(fk, { r, paths: new Set() });
+      forms.get(fk).paths.add(path);
+      let n = notes.get(path);
+      if (!n) notes.set(path, (n = { path, line: r.line, col: r.col ?? 0, refText: r.text, lineText: r.lineText, lineCol: r.lineCol, ranges: new Map() }));
+      if (!n.ranges.has(fk)) n.ranges.set(fk, r);
+    }
+    const best = [...forms.values()].sort((a, b) => (b.paths.size - a.paths.size) ||
+      ((vhi(a.r) - vlo(a.r)) - (vhi(b.r) - vlo(b.r))) || (vlo(a.r) - vlo(b.r)))[0].r;
+    const ref = { book: best.book, bookName: best.bookName, c1: best.c1, v1: best.v1, c2: best.c2, v2: best.v2 };
+    return {
+      key: `${ref.book}:${ref.c1}:${ref.v1}:${ref.c2}:${ref.v2}`, book: cl.book, ref, forms: forms.size,
+      notes: [...notes.values()].map(({ ranges, ...n }) => ({ ...n,
+        refs: [...ranges.values()].sort((a, b) => (vlo(a) - vlo(b)) || (vhi(a) - vhi(b))).map(versePart) }))
+        .sort((a, b) => name(a.path).localeCompare(name(b.path))),
+    };
+  });
+  return { notes: total, hubs, dots };
+}
+
 // Which chapters / verses of `book` the given refs cover (for outlining the current note).
 // Returns { chapters: Set(c), verses: Set("c:v") }.
 function marks(refs, book) {
@@ -224,4 +301,4 @@ function marks(refs, book) {
   return { chapters, verses };
 }
 
-export { coverage, alsoCited, marks, level, versesIn, chaptersIn };
+export { coverage, alsoCited, verseStar, marks, level, versesIn, chaptersIn };

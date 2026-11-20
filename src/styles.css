@@ -338,3 +338,30 @@ body.pi-verses-inline .markdown-preview-view.bible-chapter .el-h6 h6 { font-weig
 .pi-intertext-modal .pi-it-sentence { font-weight: var(--font-semibold); margin-bottom: 2px; }
 .passage-index .pi-it-none summary .pi-folder { margin-left: 6px; color: var(--text-faint); }
 .passage-index .pi-it-add { margin-top: 4px; }
+
+/* Verse star (Map, when a verse is picked): links from the verse to the verses its notes also cite. */
+.passage-index .pi-star-head { display: flex; align-items: center; gap: 4px; }
+.passage-index .pi-star-back { padding: 2px; }
+.passage-index .pi-star-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.passage-index .pi-star-switch { padding-right: 7px; color: var(--text-muted); }
+.passage-index .pi-star-note { color: var(--text-faint); font-size: var(--font-ui-smaller); margin-top: 2px; }
+.passage-index svg.pi-star { display: block; max-width: 340px; margin: 4px auto 0; overflow: visible; }
+.passage-index .pi-star-line { stroke: currentColor; stroke-linecap: round; opacity: 0.55; }
+.passage-index .pi-star-link.is-thin .pi-star-line { opacity: 0.3; }
+.passage-index .pi-star-hit { stroke: transparent; cursor: pointer; }
+.passage-index .pi-star-link:hover .pi-star-line, .passage-index .pi-star-link.is-selected .pi-star-line { opacity: 1; }
+.passage-index .pi-star-ot { color: var(--color-orange); }
+.passage-index .pi-star-nt { color: var(--color-blue); }
+.passage-index .pi-star-x { color: var(--text-muted); }
+.passage-index .pi-star-node { cursor: pointer; }
+.passage-index .pi-star-node.is-fixed { cursor: default; }
+.passage-index .pi-star-node circle { fill: currentColor; stroke: var(--background-primary); stroke-width: 1.5; }
+.passage-index .pi-star-text {
+  fill: var(--text-normal); font-size: 11px; dominant-baseline: middle;
+  paint-order: stroke; stroke: var(--background-primary); stroke-width: 3px; stroke-linejoin: round;
+}
+.passage-index .pi-star-node:hover .pi-star-text, .passage-index .pi-star-node.is-selected .pi-star-text { fill: var(--text-accent); font-weight: var(--font-semibold); }
+.passage-index .pi-star-centre circle { fill: var(--interactive-accent); stroke: var(--background-primary); stroke-width: 2; }
+.passage-index .pi-star-centre .pi-star-text { font-weight: var(--font-semibold); }
+.passage-index .pi-star-sel { display: flex; justify-content: space-between; gap: 8px; }
+.passage-index .pi-star-go { font-weight: normal; }

@@ -6,7 +6,7 @@ import { createReader, format } from "./reader.js";
 import { PassageIndex, sortTopics, INTERTEXT_HEADINGS, intertextLine, addIntertextLine } from "./passage-index.js";
 import { passageText, trimBible, sectionOf, translationInfo, downloadUrl, TRANSLATIONS, LICENSES } from "./bible.js";
 import { BOOKS } from "./books.js";
-import { coverage, alsoCited, marks, level } from "./coverage.js";
+import { coverage, alsoCited, verseStar, marks, level } from "./coverage.js";
 import { planBible, DEFAULT_OPTIONS as WIZARD_DEFAULTS } from "./wizard.js";
 
 // Verse numbers in Bible chapter notes, Live Preview. The notes keep "###### 3" lines (so
@@ -76,6 +76,8 @@ const DEFAULTS = {
   excludedFolders: [], flashSeconds: 3, ignorePhrases: [], hideBroad: true, hideChapter: true, broadChapters: 2,
   // A topic note: frontmatter `topicProperty` has one of `topicValues`, or the note is in one of `topicFolders`.
   topicProperty: "type", topicValues: ["topic"], topicFolders: [],
+  // Hub notes (a book's index): left out of the verse star, since they gather other notes' references.
+  hubProperty: "type", hubValues: ["index", "book"],
   // Frontmatter property listing references a note cites only in passing (pi-ignore: [Acts 11:28]).
   ignoreProperty: "pi-ignore",
   // Headings that start a note's Intertexts section (any level; case ignored).
@@ -311,8 +313,17 @@ class PassageIndexPlugin extends Plugin {
     const s = this.settings;
     const inFolder = (s.topicFolders || []).some((f) => f && path.startsWith(f.replace(/\/$/, "") + "/"));
     if (inFolder) return true;
-    const key = (s.topicProperty || "").trim();
-    const want = (s.topicValues || []).map((v) => v.trim().replace(/^#/, "").toLowerCase()).filter(Boolean);
+    return this.hasProperty(path, s.topicProperty, s.topicValues);
+  }
+
+  // A hub note (e.g. `type: index`), left out of the verse star.
+  isHub(path) { return this.hasProperty(path, this.settings.hubProperty, this.settings.hubValues); }
+  hubKey() { return `${this.settings.hubProperty}=${(this.settings.hubValues || []).join(",")}`; }
+
+  // Whether frontmatter `key` has one of `values` (case and a leading "#" ignored).
+  hasProperty(path, key, values) {
+    key = (key || "").trim();
+    const want = (values || []).map((v) => v.trim().replace(/^#/, "").toLowerCase()).filter(Boolean);
     if (!key || !want.length) return false;
     const f = this.app.vault.getAbstractFileByPath(path);
     const v = f instanceof TFile ? this.app.metadataCache.getFileCache(f)?.frontmatter?.[key] : undefined;
@@ -1069,7 +1080,127 @@ function drawMap(el, plugin, state, opts) {
     if (!sorted.length) list.createDiv({ cls: "pi-none", text: "No notes." });
     for (const n of sorted) mapNoteItem(list, plugin, opts, n, n.count > 1 ? `×${n.count}` : null);
   }
+  if (v) drawVerseStar(wrap, plugin, state, opts, { book: state.book, bookName, c1: ch.c, v1: v.v, c2: ch.c, v2: v.v });
   drawAlsoCited(wrap, plugin, state, opts, { book: state.book, c: ch.c, v: v ? v.v : null });
+}
+
+// ---- Verse star (0.4.0) ------------------------------------------------------------------
+// The picked verse in the centre; around it, the verses the notes on it also cite, in Bible
+// order (Old Testament down the left, New Testament down the right). Line thickness = notes
+// sharing the link. Click a line for the notes behind it; click a dot to make it the centre
+// (Back returns). Links shared by 2+ notes, or all of them (switch, or when fewer than
+// STAR_MIN reach 2+). state.star = { base, focus, history, sel, all }.
+const STAR_MIN = 3;
+const shortRef = (r) => format({ ...r, bookName: mapAbbr(r.book) });
+const refKey = (r) => `${r.book}:${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
+
+function drawVerseStar(wrap, plugin, state, opts, picked) {
+  // A verse picked in the grid starts a new star; recentring keeps the grid on the new centre.
+  if (state.star?.base !== refKey(picked)) state.star = { base: refKey(picked), focus: picked, history: [], sel: null, all: false };
+  const st = state.star;
+  const focus = st.focus;
+  const s = verseStar(plugin.index, focus, { broadChapters: plugin.settings.broadChapters || 2, skip: plugin.rabbitPath(),
+    isHub: (p) => plugin.isHub(p), hubKey: plugin.hubKey() });
+  const here = shortRef(focus);
+
+  const head = wrap.createDiv({ cls: "pi-map-label pi-also-head pi-star-head" });
+  if (st.history.length) {
+    const back = head.createSpan({ cls: "pi-star-back clickable-icon", attr: { "aria-label": `Back to ${shortRef(st.history[st.history.length - 1])}` } });
+    setIcon(back, "arrow-left");
+    back.addEventListener("click", () => {
+      const prev = st.history.pop();
+      recentre(prev);
+    });
+  }
+  head.createSpan({ text: `Verse star: ${here}` });
+  const recentre = (ref) => {
+    st.focus = ref; st.sel = null; st.all = false;
+    Object.assign(state, { book: ref.book, chapter: ref.c1, verse: ref.v1 });
+    st.base = refKey({ book: ref.book, c1: ref.c1, v1: ref.v1, c2: ref.c1, v2: ref.v1 });
+    opts.rerender();
+  };
+
+  const hubs = s.hubs ? ` · ${plural(s.hubs, "hub note")} left out` : "";
+  if (!s.notes) { wrap.createDiv({ cls: "pi-none", text: `No notes cite ${here} with a verse reference${hubs}.` }); return; }
+  if (!s.dots.length) { wrap.createDiv({ cls: "pi-none", text: `The ${plural(s.notes, "note")} on ${here} cite no other verses${hubs}.` }); return; }
+
+  const strong = s.dots.filter((d) => d.notes.length > 1);
+  const fallback = strong.length < STAR_MIN && strong.length < s.dots.length;
+  const showAll = st.all || fallback;
+  const dots = showAll ? s.dots : strong;
+
+  const bar = wrap.createDiv({ cls: "pi-star-bar" });
+  bar.createSpan({ cls: "pi-star-sum", text: `${plural(s.notes, "note")} on ${here}${hubs}` });
+  if (!fallback && strong.length < s.dots.length) {
+    const sw = bar.createSpan({ cls: "pi-also-chip pi-star-switch", text: st.all ? "Shared by 2+ only" : `Show all ${s.dots.length}` });
+    sw.addEventListener("click", () => { st.all = !st.all; opts.rerender(); });
+  }
+  if (fallback) wrap.createDiv({ cls: "pi-star-note", text: strong.length
+    ? `Only ${plural(strong.length, "link")} shared by 2 or more notes, so all ${s.dots.length} are shown.`
+    : `No link is shared by 2 or more notes, so all ${s.dots.length} are shown.` });
+
+  drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll);
+
+  const sel = st.sel && dots.find((d) => d.key === st.sel);
+  if (!sel) { wrap.createDiv({ cls: "pi-none", text: "Click a line for the notes behind it, or a passage to put it in the centre." }); return; }
+  const lab = wrap.createDiv({ cls: "pi-map-label pi-star-sel" });
+  lab.createSpan({ text: `${here} and ${shortRef(sel.ref)} — ${plural(sel.notes.length, "note")}` });
+  if (sel.book <= 66) {
+    const go = lab.createEl("a", { cls: "pi-star-go", text: "Centre here", href: "#" });
+    go.addEventListener("click", (evt) => { evt.preventDefault(); st.history.push(focus); recentre(sel.ref); });
+  }
+  const list = wrap.createDiv({ cls: "pi-list" });
+  for (const n of sel.notes) mapNoteItem(list, plugin, opts, n, null, n.refs.join(", "));
+}
+
+// Plain SVG, no library. Dots sit on an ellipse, spaced evenly top to bottom on each side, so
+// labels never overlap however many there are.
+function drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll) {
+  const W = 340, cx = W / 2, a = 64, row = 17, pad = 16;
+  const left = dots.filter((d) => d.book <= 39 || d.book > 66), right = dots.filter((d) => d.book >= 40 && d.book <= 66);
+  const b = Math.max(52, (Math.max(left.length, right.length) - 1) * row / 2);
+  const H = 2 * b + 2 * pad + 8, cy = H / 2;
+  const svg = wrap.createSvg("svg", { cls: "pi-star", attr: { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img",
+    "aria-label": `Verse star for ${format(focus)}: ${plural(dots.length, "linked passage")}` } });
+  const place = (side, list) => list.map((d, i) => {
+    const y = list.length === 1 ? cy : cy - b + (2 * b * i) / (list.length - 1);
+    const t = (y - cy) / (b / 0.9);
+    return { d, side, x: cx + side * a * Math.sqrt(Math.max(0, 1 - t * t)), y };
+  });
+  const pts = [...place(-1, left), ...place(1, right)];
+  const width = (n) => (n >= 4 ? 4.5 : n === 3 ? 3.5 : n === 2 ? 2.5 : 1.2);
+  const classes = (str) => str.split(" ").filter(Boolean);
+  const kind = (book) => (book > 66 ? "pi-star-x" : book >= 40 ? "pi-star-nt" : "pi-star-ot");
+
+  const lines = svg.createSvg("g");
+  const nodes = svg.createSvg("g");
+  for (const p of pts) {
+    const n = p.d.notes.length, label = shortRef(p.d.ref);
+    const selected = st.sel === p.d.key;
+    const g = lines.createSvg("g", { cls: classes(`pi-star-link ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (n < 2 && showAll ? " is-thin" : "")),
+      attr: { "aria-label": `${format(focus)} and ${format(p.d.ref)}: ${plural(n, "note")}` } });
+    const xy = { x1: cx, y1: cy, x2: p.x, y2: p.y };
+    g.createSvg("line", { cls: "pi-star-line", attr: { ...xy, "stroke-width": width(n) } });
+    g.createSvg("line", { cls: "pi-star-hit", attr: { ...xy, "stroke-width": 10 } });
+    g.addEventListener("click", () => { st.sel = selected ? null : p.d.key; opts.rerender(); });
+
+    const can = p.d.book <= 66;
+    const node = nodes.createSvg("g", { cls: classes(`pi-star-node ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (can ? "" : " is-fixed")),
+      attr: { "aria-label": can ? `${format(p.d.ref)}: ${plural(n, "note")}. Click to put it in the centre.` : `${format(p.d.ref)}: ${plural(n, "note")}` } });
+    node.createSvg("circle", { attr: { cx: p.x, cy: p.y, r: 3 + Math.min(n, 4) * 0.8 } });
+    const text = node.createSvg("text", { cls: "pi-star-text", attr: { x: p.x + p.side * 8, y: p.y, "text-anchor": p.side < 0 ? "end" : "start" } });
+    text.textContent = label;
+    node.addEventListener("click", () => {
+      if (can) { st.history.push(focus); recentre(p.d.ref); }
+      else { st.sel = selected ? null : p.d.key; opts.rerender(); }
+    });
+    opts.wireVerse?.(node, { label: format(p.d.ref), ref: p.d.ref });
+  }
+  const c = nodes.createSvg("g", { cls: "pi-star-centre" });
+  c.createSvg("circle", { attr: { cx, cy, r: 7 } });
+  const ct = c.createSvg("text", { cls: "pi-star-text", attr: { x: cx, y: cy + 21, "text-anchor": "middle" } });
+  ct.textContent = shortRef(focus);
+  opts.wireVerse?.(c, { label: format(focus), ref: focus });
 }
 
 const mapAbbr = (book) => MAP_ABBR[book - 1] || BOOK_NAME[book] || `Book ${book}`;
@@ -2905,6 +3036,22 @@ class PassageIndexSettings extends PluginSettingTab {
         if (!pp?.enabled) { new Notice("Page preview is turned off under Core plugins."); return; }
         this.app.setting?.openTabById?.("page-preview");
       }));
+
+    new Setting(el).setName("Verse star").setHeading();
+    new Setting(el)
+      .setName("Leave out notes whose property")
+      .setDesc("Hub notes, such as a book's index, gather the references of your other notes, so they would make almost every link in the verse star look shared. Notes with one of the values below in this frontmatter property are left out of the star.")
+      .addText((t) => t.setPlaceholder("type").setValue(this.plugin.settings.hubProperty || "")
+        .onChange(async (v) => { this.plugin.settings.hubProperty = v.trim(); await this.plugin.saveSettings(); this.plugin.refreshViews(); }));
+    new Setting(el)
+      .setName("Has one of these values")
+      .setDesc("Separated by commas, e.g. index, book. Upper/lower case and a leading # are ignored. Leave empty to keep every note.")
+      .addText((t) => t.setPlaceholder("index, book").setValue((this.plugin.settings.hubValues || []).join(", "))
+        .onChange(async (v) => {
+          this.plugin.settings.hubValues = v.split(",").map((s) => s.trim()).filter(Boolean);
+          await this.plugin.saveSettings();
+          this.plugin.refreshViews();
+        }));
   }
 
   // Bible wizard: open it, and manage the Bibles it has written (open, regenerate, remove).
