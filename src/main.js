@@ -1081,7 +1081,8 @@ function drawMap(el, plugin, state, opts) {
     for (const n of sorted) mapNoteItem(list, plugin, opts, n, n.count > 1 ? `×${n.count}` : null);
   }
   if (v) drawVerseStar(wrap, plugin, state, opts, { book: state.book, bookName, c1: ch.c, v1: v.v, c2: ch.c, v2: v.v });
-  drawAlsoCited(wrap, plugin, state, opts, { book: state.book, c: ch.c, v: v ? v.v : null });
+  // A picked verse gets the star; the chapter chips show for the whole chapter only.
+  else drawAlsoCited(wrap, plugin, state, opts, { book: state.book, c: ch.c, v: null });
 }
 
 // ---- Verse star (0.4.0) ------------------------------------------------------------------
@@ -1234,7 +1235,8 @@ function drawAlsoCited(wrap, plugin, state, opts, focus) {
   const fkey = `${focus.book}:${focus.c}:${focus.v ?? ""}`;
   if (state.also?.focus !== fkey) state.also = { focus: fkey, key: null, all: false };
   const st = state.also;
-  const a = alsoCited(plugin.index, focus, { broadChapters: plugin.settings.broadChapters || 2, skip: plugin.rabbitPath() });
+  const a = alsoCited(plugin.index, focus, { broadChapters: plugin.settings.broadChapters || 2, skip: plugin.rabbitPath(),
+    isHub: (p) => plugin.isHub(p), hubKey: plugin.hubKey() });
   if (!a.notes) return;
   const here = `${mapAbbr(focus.book)} ${focus.c}${focus.v ? `:${focus.v}` : ""}`;
   const head = wrap.createDiv({ cls: "pi-map-label pi-also-head", text: `Notes on ${here} also cite` });

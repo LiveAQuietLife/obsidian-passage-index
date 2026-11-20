@@ -121,4 +121,13 @@ t("alsoCited reused until a note changes (bug 16)", () => {
     assert.strictEqual(verseStar(ix, focus, { isHub, hubKey: "index" }).notes, 4);
   });
 }
+t("alsoCited leaves hub notes out", () => {
+  const ix = new PassageIndex(createReader(), {});
+  ix.setFile("a.md", "Rev 1:7; Dan 7:13.", "A");
+  ix.setFile("Revelation - Index.md", "Rev 1:7; Dan 7:13; Zech 12:10.", "Revelation - Index");
+  const f = { book: 66, c: 1, v: null };
+  assert.strictEqual(alsoCited(ix, f).notes, 2);
+  const h = alsoCited(ix, f, { isHub: (p) => p.includes("Index"), hubKey: "index" });
+  assert.strictEqual(h.notes, 1); assert.deepStrictEqual(h.entries.map((x) => `${x.book}:${x.c}`), ["27:7"]);
+});
 console.log(`coverage: ${n} passed`);

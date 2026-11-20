@@ -153,10 +153,11 @@ function versePart(r) {
 // Returns { notes: n, entries: [{ book, c, notes: [{ path, line, col, refText, lineText,
 //   lineCol, refs: ["7:13", "7:9–10"] }] }] } (refs: the distinct ranges there, without the book), entries with most notes first, then Bible order; each
 // entry's notes by name. line/col: the note's first citation there (body before filename).
+// isHub(path) / hubKey: hub notes left out, as in the verse star.
 // The result is reused until a note changes (index.version), so treat it as read-only (bug 16):
 // the Map redraws on every chip click with the same focus.
 function alsoCited(index, focus, opts = {}) {
-  const key = `${index.version}|${focus.book}:${focus.c}:${focus.v ?? ""}|${opts.broadChapters ?? 2}|${opts.skip ?? ""}`;
+  const key = `${index.version}|${focus.book}:${focus.c}:${focus.v ?? ""}|${opts.broadChapters ?? 2}|${opts.skip ?? ""}|${opts.hubKey ?? ""}`;
   const cache = index._also?.version === index.version ? index._also : (index._also = { version: index.version, results: new Map() });
   if (!cache.results.has(key)) {
     if (cache.results.size >= 50) cache.results.clear();
@@ -165,7 +166,7 @@ function alsoCited(index, focus, opts = {}) {
   return cache.results.get(key);
 }
 
-function findAlsoCited(index, focus, { broadChapters = 2, skip = null } = {}) {
+function findAlsoCited(index, focus, { broadChapters = 2, skip = null, isHub = null } = {}) {
   const narrow = (r) => r.c2 - r.c1 + 1 <= broadChapters;
   const onFocus = (r) => {
     if (r.book !== focus.book || r.c1 > focus.c || r.c2 < focus.c || !narrow(r)) return false;
@@ -180,7 +181,7 @@ function findAlsoCited(index, focus, { broadChapters = 2, skip = null } = {}) {
   for (const path of index.byBook.get(focus.book) || []) {
     if (path === skip) continue;
     const e = index.files.get(path);
-    if (!e || !e.refs.some(onFocus)) continue;
+    if (!e || !e.refs.some(onFocus) || isHub?.(path)) continue;
     total++;
     // Reading order, with the filename's main passage (line -1) last.
     const refs = [...e.refs].sort((a, b) => ((a.line < 0) - (b.line < 0)) || (a.line - b.line) || ((a.col ?? 0) - (b.col ?? 0)));
