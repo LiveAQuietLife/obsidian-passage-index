@@ -1135,7 +1135,9 @@ function drawVerseStar(wrap, plugin, state, opts, picked) {
     const sw = bar.createSpan({ cls: "pi-also-chip pi-star-switch", text: st.all ? "Shared by 2+ only" : `Show all ${s.dots.length}` });
     sw.addEventListener("click", () => { st.all = !st.all; opts.rerender(); });
   }
-  if (fallback) wrap.createDiv({ cls: "pi-star-note", text: strong.length
+  if (fallback) wrap.createDiv({ cls: "pi-star-note", text: s.notes === 1
+    ? `With one note, these are the ${plural(s.dots.length, "other passage")} it cites.`
+    : strong.length
     ? `Only ${plural(strong.length, "link")} shared by 2 or more notes, so all ${s.dots.length} are shown.`
     : `No link is shared by 2 or more notes, so all ${s.dots.length} are shown.` });
 
