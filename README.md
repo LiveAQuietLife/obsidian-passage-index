@@ -114,6 +114,8 @@ Record where one passage quotes, alludes to or echoes another, and the pane show
 
 It shows the line it will write, and where the link will show, before you choose **Add**. The line goes at the end of the note's Intertexts section, and the section is made if the note doesn't have one.
 
+![The Add intertext window: Revelation 11:18 alludes to Psalms 2:1–3, with the line it will add](images/add-intertext.jpg)
+
 **What the pane shows** in the Intertexts section:
 
 - **This passage uses:** the texts this passage quotes, alludes to or echoes, e.g. *2 Samuel 7:14 · alluded to*. Clicking one opens that passage's note (e.g. `Isaiah 56v7`), if you have one.
@@ -144,7 +146,7 @@ The window writes ordinary lines you can also type or edit. Under an `## Interte
 - [ ] Does Jer 8:13's fig imagery explain the fig tree? #intertext
 ```
 
-![The Intertexts section listing the passages this note alludes to and echoes](images/intertexts.jpg)
+![The Intertexts section for Psalm 2:7–9: the passage it alludes to, and the New Testament texts that quote it or allude to it](images/intertexts.jpg)
 
 ### Map
 
