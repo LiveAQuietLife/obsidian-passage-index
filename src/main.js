@@ -174,6 +174,7 @@ class PassageIndexPlugin extends Plugin {
     this.pending = new Map();
 
     this.registerView(VIEW_TYPE, (leaf) => new PassagePane(leaf, this));
+    this.registerView(STAR_VIEW, (leaf) => new StarView(leaf, this));
     this.registerEditorExtension(flashField);
     // Kept in an array so a settings change can swap it and refresh open editors.
     this.verseExt = [verseNumberExtension(this)];
@@ -183,6 +184,7 @@ class PassageIndexPlugin extends Plugin {
     this.registerHoverLinkSource(VIEW_TYPE, { display: "Passage Index", defaultMod: false });
     this.addRibbonIcon("book-open-text", "Open Passage Index", () => this.activateView());
     this.addCommand({ id: "open-pane", name: "Open pane", callback: () => this.activateView() });
+    this.addCommand({ id: "open-verse-star", name: "Open verse star", callback: () => this.openStar(null) });
     this.addCommand({ id: "rebuild-index", name: "Rebuild index", callback: () => this.buildIndex() });
     // Coverage map in a note: a live `pi-map` code block naming a book.
     this.mapBlocks = new Set();
@@ -437,10 +439,19 @@ class PassageIndexPlugin extends Plugin {
     }, 1500));
   }
 
+  // The verse star in a main-area tab (reused if one is open). focus null: just open it.
+  async openStar(focus, history = []) {
+    const ws = this.app.workspace;
+    const leaf = ws.getLeavesOfType(STAR_VIEW)[0] || ws.getLeaf("tab");
+    const state = focus ? { focus, history: [...history] } : {};
+    await leaf.setViewState({ type: STAR_VIEW, active: true, state });
+    ws.revealLeaf(leaf);
+  }
+
   refreshViews() {
     // A pane in a hidden tab may still be a deferred placeholder without render();
     // it renders itself when shown (onOpen). Never let a refresh stop an index build.
-    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+    for (const leaf of [...this.app.workspace.getLeavesOfType(VIEW_TYPE), ...this.app.workspace.getLeavesOfType(STAR_VIEW)]) {
       try { if (typeof leaf.view?.render === "function") leaf.view.render(); }
       catch (e) { console.warn("Passage Index: couldn't refresh pane:", e); }
     }
@@ -1080,7 +1091,7 @@ function drawMap(el, plugin, state, opts) {
     if (!sorted.length) list.createDiv({ cls: "pi-none", text: "No notes." });
     for (const n of sorted) mapNoteItem(list, plugin, opts, n, n.count > 1 ? `×${n.count}` : null);
   }
-  if (v) drawVerseStar(wrap, plugin, state, opts, { book: state.book, bookName, c1: ch.c, v1: v.v, c2: ch.c, v2: v.v });
+  if (v) drawMapStar(wrap, plugin, state, opts, { book: state.book, bookName, c1: ch.c, v1: v.v, c2: ch.c, v2: v.v });
   // A picked verse gets the star; the chapter chips show for the whole chapter only.
   else drawAlsoCited(wrap, plugin, state, opts, { book: state.book, c: ch.c, v: null });
 }
@@ -1090,36 +1101,53 @@ function drawMap(el, plugin, state, opts) {
 // order (Old Testament down the left, New Testament down the right). Line thickness = notes
 // sharing the link. Click a line for the notes behind it; click a dot to make it the centre
 // (Back returns). Links shared by 2+ notes, or all of them (switch, or when fewer than
-// STAR_MIN reach 2+). state.star = { base, focus, history, sel, all }.
+// STAR_MIN reach 2+). Drawn in the Map under the verse grid, and larger in its own tab
+// (StarView). st = { focus, history, sel, all }.
 const STAR_MIN = 3;
+const STAR_VIEW = "passage-index-star";
 const shortRef = (r) => format({ ...r, bookName: mapAbbr(r.book) });
 const refKey = (r) => `${r.book}:${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
 
-function drawVerseStar(wrap, plugin, state, opts, picked) {
-  // A verse picked in the grid starts a new star; recentring keeps the grid on the new centre.
+// The Map's star: picking a verse in the grid starts a new one; recentring moves the grid to
+// the new centre (state.star.base remembers which verse the star belongs to).
+function drawMapStar(wrap, plugin, state, opts, picked) {
   if (state.star?.base !== refKey(picked)) state.star = { base: refKey(picked), focus: picked, history: [], sel: null, all: false };
   const st = state.star;
+  drawVerseStar(wrap, plugin, st, { ...opts,
+    onRecentre: (ref) => {
+      Object.assign(state, { book: ref.book, chapter: ref.c1, verse: ref.v1 });
+      st.base = refKey({ book: ref.book, c1: ref.c1, v1: ref.v1, c2: ref.c1, v2: ref.v1 });
+    },
+    openLarger: () => plugin.openStar(st.focus, st.history),
+  });
+}
+
+// opts: rerender(), onRecentre(ref), openLarger(), big (the tab), wireVerse, hoverParent, file.
+function drawVerseStar(wrap, plugin, st, opts) {
   const focus = st.focus;
   const s = verseStar(plugin.index, focus, { broadChapters: plugin.settings.broadChapters || 2, skip: plugin.rabbitPath(),
     isHub: (p) => plugin.isHub(p), hubKey: plugin.hubKey() });
-  const here = shortRef(focus);
+  const name = opts.big ? format : shortRef;
+  const here = name(focus);
+  const recentre = (ref) => {
+    st.focus = ref; st.sel = null; st.all = false;
+    opts.onRecentre?.(ref);
+    opts.rerender();
+  };
+  const go = (ref) => { st.history.push(focus); recentre(ref); };
 
   const head = wrap.createDiv({ cls: "pi-map-label pi-also-head pi-star-head" });
   if (st.history.length) {
-    const back = head.createSpan({ cls: "pi-star-back clickable-icon", attr: { "aria-label": `Back to ${shortRef(st.history[st.history.length - 1])}` } });
+    const back = head.createSpan({ cls: "pi-star-back clickable-icon", attr: { "aria-label": `Back to ${name(st.history[st.history.length - 1])}` } });
     setIcon(back, "arrow-left");
-    back.addEventListener("click", () => {
-      const prev = st.history.pop();
-      recentre(prev);
-    });
+    back.addEventListener("click", () => recentre(st.history.pop()));
   }
-  head.createSpan({ text: `Verse star: ${here}` });
-  const recentre = (ref) => {
-    st.focus = ref; st.sel = null; st.all = false;
-    Object.assign(state, { book: ref.book, chapter: ref.c1, verse: ref.v1 });
-    st.base = refKey({ book: ref.book, c1: ref.c1, v1: ref.v1, c2: ref.c1, v2: ref.v1 });
-    opts.rerender();
-  };
+  head.createSpan({ cls: "pi-star-title", text: `Verse star: ${here}` });
+  if (opts.openLarger) {
+    const big = head.createSpan({ cls: "pi-star-larger clickable-icon", attr: { "aria-label": "Open larger in a tab" } });
+    setIcon(big, "maximize-2");
+    big.addEventListener("click", () => opts.openLarger());
+  }
 
   const hubs = s.hubs ? ` · ${plural(s.hubs, "hub note")} left out` : "";
   if (!s.notes) { wrap.createDiv({ cls: "pi-none", text: `No notes cite ${here} with a verse reference${hubs}.` }); return; }
@@ -1142,29 +1170,31 @@ function drawVerseStar(wrap, plugin, state, opts, picked) {
     ? `Only ${plural(strong.length, "link")} shared by 2 or more notes, so all ${s.dots.length} are shown.`
     : `No link is shared by 2 or more notes, so all ${s.dots.length} are shown.` });
 
-  drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll);
+  drawStarSvg(wrap, opts, focus, dots, st, go, showAll);
 
   const sel = st.sel && dots.find((d) => d.key === st.sel);
   if (!sel) { wrap.createDiv({ cls: "pi-none", text: "Click a line for the notes behind it, or a passage to put it in the centre." }); return; }
   const lab = wrap.createDiv({ cls: "pi-map-label pi-star-sel" });
-  lab.createSpan({ text: `${here} and ${shortRef(sel.ref)} — ${plural(sel.notes.length, "note")}` });
+  lab.createSpan({ text: `${here} and ${name(sel.ref)} — ${plural(sel.notes.length, "note")}` });
   if (sel.book <= 66) {
-    const go = lab.createEl("a", { cls: "pi-star-go", text: "Centre here", href: "#" });
-    go.addEventListener("click", (evt) => { evt.preventDefault(); st.history.push(focus); recentre(sel.ref); });
+    const c = lab.createEl("a", { cls: "pi-star-go", text: "Centre here", href: "#" });
+    c.addEventListener("click", (evt) => { evt.preventDefault(); go(sel.ref); });
   }
   const list = wrap.createDiv({ cls: "pi-list" });
   for (const n of sel.notes) mapNoteItem(list, plugin, opts, n, null, n.refs.join(", "));
 }
 
 // Plain SVG, no library. Dots sit on an ellipse, spaced evenly top to bottom on each side, so
-// labels never overlap however many there are.
-function drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll) {
-  const W = 340, cx = W / 2, a = 64, row = 17, pad = 16;
+// labels never overlap however many there are. The tab's star is wider, with full book names.
+function drawStarSvg(wrap, opts, focus, dots, st, go, showAll) {
+  const big = !!opts.big;
+  const W = big ? 820 : 340, cx = W / 2, a = big ? 220 : 64, row = big ? 22 : 17, pad = big ? 24 : 16;
+  const name = big ? format : shortRef;
   const left = dots.filter((d) => d.book <= 39 || d.book > 66), right = dots.filter((d) => d.book >= 40 && d.book <= 66);
-  const b = Math.max(52, (Math.max(left.length, right.length) - 1) * row / 2);
+  const b = Math.max(big ? 120 : 52, (Math.max(left.length, right.length) - 1) * row / 2);
   const H = 2 * b + 2 * pad + 8, cy = H / 2;
-  const svg = wrap.createSvg("svg", { cls: "pi-star", attr: { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img",
-    "aria-roledescription": "verse star" } });
+  const svg = wrap.createSvg("svg", { cls: big ? ["pi-star", "pi-star-big"] : "pi-star",
+    attr: { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-roledescription": "verse star" } });
   // Tooltips via <title>: Obsidian's aria-label tooltips assume HTML elements (isShown) and throw on SVG.
   const tip = (el, text) => { el.createSvg("title").textContent = text; };
   tip(svg, `Verse star for ${format(focus)}: ${plural(dots.length, "linked passage")}`);
@@ -1174,14 +1204,14 @@ function drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll) {
     return { d, side, x: cx + side * a * Math.sqrt(Math.max(0, 1 - t * t)), y };
   });
   const pts = [...place(-1, left), ...place(1, right)];
-  const width = (n) => (n >= 4 ? 4.5 : n === 3 ? 3.5 : n === 2 ? 2.5 : 1.2);
+  const width = (n) => (big ? 1.3 : 1) * (n >= 4 ? 4.5 : n === 3 ? 3.5 : n === 2 ? 2.5 : 1.2);
   const classes = (str) => str.split(" ").filter(Boolean);
   const kind = (book) => (book > 66 ? "pi-star-x" : book >= 40 ? "pi-star-nt" : "pi-star-ot");
 
   const lines = svg.createSvg("g");
   const nodes = svg.createSvg("g");
   for (const p of pts) {
-    const n = p.d.notes.length, label = shortRef(p.d.ref);
+    const n = p.d.notes.length;
     const selected = st.sel === p.d.key;
     const g = lines.createSvg("g", { cls: classes(`pi-star-link ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (n < 2 && showAll ? " is-thin" : "")) });
     tip(g, `${format(focus)} and ${format(p.d.ref)}: ${plural(n, "note")}`);
@@ -1193,20 +1223,78 @@ function drawStarSvg(wrap, plugin, opts, focus, dots, st, recentre, showAll) {
     const can = p.d.book <= 66;
     const node = nodes.createSvg("g", { cls: classes(`pi-star-node ${kind(p.d.book)}` + (selected ? " is-selected" : "") + (can ? "" : " is-fixed")) });
     tip(node, can ? `${format(p.d.ref)}: ${plural(n, "note")}. Click to put it in the centre.` : `${format(p.d.ref)}: ${plural(n, "note")}`);
-    node.createSvg("circle", { attr: { cx: p.x, cy: p.y, r: 3 + Math.min(n, 4) * 0.8 } });
-    const text = node.createSvg("text", { cls: "pi-star-text", attr: { x: p.x + p.side * 8, y: p.y, "text-anchor": p.side < 0 ? "end" : "start" } });
-    text.textContent = label;
+    node.createSvg("circle", { attr: { cx: p.x, cy: p.y, r: (big ? 4 : 3) + Math.min(n, 4) * 0.8 } });
+    const text = node.createSvg("text", { cls: "pi-star-text", attr: { x: p.x + p.side * (big ? 10 : 8), y: p.y, "text-anchor": p.side < 0 ? "end" : "start" } });
+    text.textContent = name(p.d.ref);
     node.addEventListener("click", () => {
-      if (can) { st.history.push(focus); recentre(p.d.ref); }
+      if (can) go(p.d.ref);
       else { st.sel = selected ? null : p.d.key; opts.rerender(); }
     });
     opts.wireVerse?.(node, { label: format(p.d.ref), ref: p.d.ref });
   }
   const c = nodes.createSvg("g", { cls: "pi-star-centre" });
-  c.createSvg("circle", { attr: { cx, cy, r: 7 } });
-  const ct = c.createSvg("text", { cls: "pi-star-text", attr: { x: cx, y: cy + 21, "text-anchor": "middle" } });
-  ct.textContent = shortRef(focus);
+  c.createSvg("circle", { attr: { cx, cy, r: big ? 9 : 7 } });
+  const ct = c.createSvg("text", { cls: "pi-star-text", attr: { x: cx, y: cy + (big ? 26 : 21), "text-anchor": "middle" } });
+  ct.textContent = name(focus);
   opts.wireVerse?.(c, { label: format(focus), ref: focus });
+}
+
+// The verse star in its own tab: wider, full book names, a box to centre any verse. Opened
+// from the Map star's "Open larger" button or the command. Keeps its centre and Back list
+// across restarts (view state).
+class StarView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.st = { focus: null, history: [], sel: null, all: false };
+  }
+  getViewType() { return STAR_VIEW; }
+  getDisplayText() { return this.st.focus ? `Verse star: ${shortRef(this.st.focus)}` : "Verse star"; }
+  getIcon() { return "orbit"; }
+  getState() { return { focus: this.st.focus, history: this.st.history }; }
+  async setState(state, result) {
+    if (state?.focus) this.st = { focus: state.focus, history: state.history || [], sel: null, all: false };
+    await super.setState(state, result);
+    this.render();
+    this.saved(false);
+  }
+  async onOpen() { this.render(); }
+
+  render() {
+    const el = this.contentEl;
+    el.empty();
+    el.addClass("passage-index", "pi-star-view");
+    const ask = el.createDiv({ cls: "pi-star-ask" });
+    const input = ask.createEl("input", { type: "text", attr: { placeholder: "Centre on a verse, e.g. Dan 7:13", "aria-label": "Centre on a verse" } });
+    const msg = ask.createSpan({ cls: "pi-star-ask-msg" });
+    input.addEventListener("keydown", (evt) => {
+      if (evt.key !== "Enter" || evt.isComposing) return;
+      const r = this.plugin.reader.parse(input.value.trim())[0];
+      if (!r || r.v1 == null || r.book > 66) { msg.setText("Type a Bible verse or verses, e.g. Dan 7:13 or Zech 12:10–14."); return; }
+      const ref = { book: r.book, bookName: r.bookName, c1: r.c1, v1: r.v1, c2: r.c2, v2: r.v2 };
+      if (this.st.focus) this.st.history.push(this.st.focus);
+      Object.assign(this.st, { focus: ref, sel: null, all: false });
+      this.changed();
+    });
+    if (!this.plugin.ready) { el.createDiv({ cls: "pi-empty", text: "Building index…" }); return; }
+    if (!this.st.focus) { el.createDiv({ cls: "pi-empty", text: "Type a verse above, or pick a verse in the pane's Map and click Open larger." }); return; }
+    const pane = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+    drawVerseStar(el.createDiv({ cls: "pi-star-wrap" }), this.plugin, this.st, {
+      big: true, file: null, hoverParent: this,
+      rerender: () => this.render(),
+      onRecentre: () => this.saved(),
+      // The verse pop-up belongs to the pane; Ctrl-hover works while the pane is open.
+      wireVerse: typeof pane?.wireVerse === "function" ? (node, g) => pane.wireVerse(node, g) : null,
+    });
+  }
+
+  // New centre: redraw, and update the tab title and saved state.
+  changed() { this.render(); this.saved(); }
+  saved(save = true) {
+    this.leaf.updateHeader?.();
+    this.titleEl?.setText(this.getDisplayText());
+    if (save) this.app.workspace.requestSaveLayout?.();
+  }
 }
 
 const mapAbbr = (book) => MAP_ABBR[book - 1] || BOOK_NAME[book] || `Book ${book}`;
