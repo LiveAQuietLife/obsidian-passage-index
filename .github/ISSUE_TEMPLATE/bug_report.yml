@@ -1,0 +1,64 @@
+name: Something isn't working
+description: Passage Index misreads a reference, misses a note, shows something wrong, or throws an error.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please leave out anything private: a made-up note that shows the problem is just as good.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What were you doing, what did Passage Index do, and what did you expect instead?
+      placeholder: I opened my note on Romans 8 and the pane didn't list my note on Rom 8:30…
+    validations:
+      required: true
+  - type: textarea
+    id: text
+    attributes:
+      label: The exact text involved
+      description: If it's about reading references, paste the line from your note, or the note's name, exactly as written.
+      placeholder: "`Rom 8:28, 30` is read as Romans 8:28 only."
+      render: markdown
+  - type: dropdown
+    id: naming
+    attributes:
+      label: How are your passage notes named?
+      description: This changes a lot about how Passage Index works.
+      options:
+        - After the passage (e.g. Revelation 1v7-8)
+        - With a passage property (e.g. passage, or another set in settings)
+        - Neither (titles, dates or other names)
+        - A mix
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: pi-version
+    attributes:
+      label: Passage Index version
+      description: Settings → Community plugins.
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version
+      description: Settings → General.
+      placeholder: "1.9.10"
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+  - type: textarea
+    id: console
+    attributes:
+      label: Errors in the developer console (optional)
+      description: Ctrl+Shift+I (Cmd+Option+I on a Mac), then the Console tab. Copy any red lines that mention Passage Index.
+      render: text

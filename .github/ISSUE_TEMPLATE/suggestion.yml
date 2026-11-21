@@ -1,0 +1,30 @@
+name: A suggestion
+description: An idea for Passage Index, especially one that comes from a different way of studying.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Passage Index grew out of one way of studying the Bible in Obsidian. If yours is different and the plugin doesn't fit it, that's worth hearing about. Every suggestion is read, though not everything can be built.
+  - type: textarea
+    id: study
+    attributes:
+      label: What are you trying to do in your study?
+      description: Start with the study task, not the feature. For example, "I'm preparing a sermon on Rev 2:8–11 and want to see everything I've written on Smyrna."
+    validations:
+      required: true
+  - type: textarea
+    id: gets-in-the-way
+    attributes:
+      label: What gets in the way now?
+      description: What does Passage Index do, or not do, that makes this harder?
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: Your idea, if you have one. A rough sketch is fine.
+  - type: textarea
+    id: setup
+    attributes:
+      label: How your notes are set up
+      description: Folders, how notes are named, properties you use, other plugins that matter here.
