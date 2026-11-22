@@ -1,0 +1,45 @@
+{
+  "excludedFolders": [],
+  "flashSeconds": 3,
+  "ignorePhrases": [],
+  "hideBroad": true,
+  "hideChapter": true,
+  "broadChapters": 2,
+  "topicProperty": "type",
+  "topicValues": [
+    "topic"
+  ],
+  "topicFolders": [],
+  "hubProperty": "type",
+  "hubValues": [
+    "index",
+    "book"
+  ],
+  "ignoreProperty": "pi-ignore",
+  "passageProperty": "passage",
+  "intertextHeadings": [
+    "Intertexts",
+    "Intertext"
+  ],
+  "versePopup": true,
+  "bibleTranslation": "BSB",
+  "closeOnCtrlRelease": false,
+  "bibles": [],
+  "hideBiblesFromSearch": true,
+  "searchHidden": [],
+  "verseNumbers": "margin",
+  "bibleReadingView": true,
+  "openIn": {
+    "logos": true,
+    "biblegateway": false,
+    "blb": false,
+    "step": false
+  },
+  "openInVersion": {},
+  "sectionsFrom": "",
+  "paneTab": "index",
+  "trailTabs": "new",
+  "rabbitTrails": "Rabbit trails.md",
+  "rabbitOrder": "newest",
+  "gapsOrder": "cited"
+}

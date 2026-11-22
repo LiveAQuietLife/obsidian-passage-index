@@ -3,3 +3,12 @@ dist/
 bibles/
 *.bak*/
 .DS_Store
+
+# Demo vault (docs): keep only the plugin list and Passage Index's settings
+docs/demo-vault/.obsidian/*
+!docs/demo-vault/.obsidian/community-plugins.json
+!docs/demo-vault/.obsidian/plugins/
+docs/demo-vault/.obsidian/plugins/*
+!docs/demo-vault/.obsidian/plugins/passage-index/
+docs/demo-vault/.obsidian/plugins/passage-index/*
+!docs/demo-vault/.obsidian/plugins/passage-index/data.json
