@@ -4,6 +4,8 @@ A side pane that follows your reading. Open a note, and Passage Index shows ever
 
 Desktop only.
 
+**New to it? Try the [hands-on tutorial](https://passage-index-tutorial.marvelousmarmot4.chatgpt.site):** follow Revelation 1:7 through a small demo vault, in your browser or in Obsidian.
+
 ![A note on Revelation 1:7–8 with the Passage Index pane beside it](images/main-view.jpg)
 
 ## What it reads
