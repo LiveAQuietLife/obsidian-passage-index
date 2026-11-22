@@ -103,5 +103,35 @@ check("same direction at both ends isn't a partner",
     const r = ends({ ...line("Psalm 2v7-9.md", "- Rev 2:27"), path: "Psalm 2v7-9.md" }); ix.remove("Rev 2v27 b.md"); return r; })(),
   ["Revelation 2v24-29.md:1 - Psalm 2:9 (quotes)"]);
 
+// Possible intertexts (cited here, not recorded yet).
+{
+  const cx = new PassageIndex(createReader(), { broadChapters: 2 });
+  const cands = (path) => cx.intertextCandidates(path).map((c) => `${c.passage}×${c.count}`);
+  cx.setFile("Revelation 2v24-29.md", [
+    "Rules with a rod of iron: Ps 2:9; see also Ps 2:9 and Isa 11:4.",
+    "Compare Rev 19:15 and Rev 2:26, and Matt 16:27. Psalm 2 in general.",
+    "Later: 1 Clem 5:2? Dan 7:13.",
+    "## Intertexts",
+    "- Dan 7:13 (alludes to)",
+  ].join("\n"), "Revelation 2v24-29");
+  check("candidates: earlier books first, most-cited first; no own book, chapters or recorded links",
+    cands("Revelation 2v24-29.md"), ["Psalms 2:9×2", "Isaiah 11:4×1", "Matthew 16:27×1"]);
+  cx.setFile("Psalm 2v7-9.md", ["Quoted in Acts 13:33 and Heb 1:5; cf. 2 Sam 7:14.", "## Intertexts", "- Acts 13:33 (quoted by)"].join("\n"), "Psalm 2v7-9");
+  check("candidates: earlier books before later ones; a reverse line counts as recorded",
+    cands("Psalm 2v7-9.md"), ["2 Samuel 7:14×1", "Hebrews 1:5×1"]);
+  cx.setFile("Psalm 2v7-9.md", ["- Rev 2:27 (quoted by)", "## Intertexts", "- Rev 2:27 (quoted by)"].join("\n"), "Psalm 2v7-9");
+  cx.setFile("Revelation 2v24-29.md", ["Ps 2:9 again; Isa 11:4."].join("\n"), "Revelation 2v24-29");
+  check("candidates: the other note's reverse line covers Ps 2:9 here",
+    cands("Revelation 2v24-29.md"), ["Isaiah 11:4×1"]);
+  cx.setFile("Notes on rods.md", "Ps 2:9 and Isa 11:4", "Notes on rods");
+  check("candidates: none without a main passage", cands("Notes on rods.md"), []);
+  cx.setFile("Revelation 3v1-3.md", "Matt 24:43–44), 1 Thess 5:2 ... the parable of the thief in Matt 24:42–44.", "Revelation 3v1-3");
+  check("candidates: a range inside another is merged into it",
+    cands("Revelation 3v1-3.md"), ["Matthew 24:42–44×2", "1 Thessalonians 5:2×1"]);
+  cx.setFile("Revelation 3v1-3.md", "Matt 24:43–44 and Matt 24:42–43; Matt 24:45; Matt 24:43.", "Revelation 3v1-3");
+  check("candidates: partly overlapping ranges become one covering both; a neighbouring verse stays apart",
+    cands("Revelation 3v1-3.md"), ["Matthew 24:42–44×3", "Matthew 24:45×1"]);
+}
+
 console.log(fail ? `${fail} failed, ${pass} passed` : `All ${pass} passed`);
 process.exit(fail ? 1 : 0);

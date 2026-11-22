@@ -92,6 +92,18 @@ const cases = [
   ["Is 53:5", ["Isaiah 53:5"]],
   ["Re 1:8", ["Revelation 1:8"]],
   ["Da 7:13", ["Daniel 7:13"]],
+  // Bug 18: an unknown numbered book ends the list before it.
+  ["Rev 3:5; 2 Clem 3:2b", ["Revelation 3:5"]],
+  ["Rev 3:5, 2 Clem 3:2b", ["Revelation 3:5"]],
+  ["Matt 10:32; cf. 2 Clem 3:2", ["Matthew 10:32"]],
+  ["Gen 1; 2 Kings 3:4", ["Genesis 1", "2 Kings 3:4"]],
+  ["Ps 2; 110", ["Psalms 2", "Psalms 110"]],
+  // Bug 19: "and N" ends a list of chapters.
+  ["Isaiah 41, 44 and 48", ["Isaiah 41", "Isaiah 44", "Isaiah 48"]],
+  ["Rev 1, 2 and 22.", ["Revelation 1", "Revelation 2", "Revelation 22"]],
+  ["Rev 1 and 2 others", ["Revelation 1"]],
+  ["Isa 40, 41 and 2 others", ["Isaiah 40", "Isaiah 41"]],
+  ["Rev 1:17 and 2 others", ["Revelation 1:17"]],
 ];
 
 let fail = 0;

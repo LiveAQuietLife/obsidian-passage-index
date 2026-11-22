@@ -98,6 +98,11 @@ function createReader(books = BOOKS) {
   const reOpen = new RegExp(`${SP}*\\(${SP}*()${FILL}(?=\\d)`, "iy");
   const reListP = new RegExp(`(?:${SP}*([,;])${SP}*|${AND}())${FILL}(?=\\d)`, "iy");
 
+  // After a bare number in a list: " Clem 3", " Apol. 61" (an unknown book and its chapter).
+  const UNKNOWN_BOOK = new RegExp(`^${SP}+\\p{Lu}\\p{L}*\\.?${SP}*\\d`, "u");
+  // After a bare number: a space and a word ("2 others").
+  const WORD_AFTER = new RegExp(`^${SP}\\p{L}`, "u");
+
   function at(re, text, pos) {
     re.lastIndex = pos;
     const m = re.exec(text);
@@ -181,7 +186,12 @@ function createReader(books = BOOKS) {
         if (startsBook(text, l.end)) break;                         // "; 1 Cor 1:22" — a new book
         const r = readCV(text, l.end, single || (sep === "," && hasVerse));   // "Rev 3:4, 6a"
         if (!r) break;
-        if (isAnd && r.b === null && !single) break;                // "and 2 others" isn't a reference
+        // "; 2 Clem 3:2": a book PI doesn't know (a capitalised word, then a chapter) starts here,
+        // so the number is part of its name, not the next item of this list (bug 18).
+        if (r.b === null && UNKNOWN_BOOK.test(text.slice(r.end, r.end + 40))) break;
+        // After "and", a bare number is a chapter only in a list of chapters ("Isaiah 41, 44 and
+        // 48", bug 19), and not when a word follows it ("Rev 1 and 2 others").
+        if (isAnd && r.b === null && !single && (hasVerse || WORD_AFTER.test(text.slice(r.end, r.end + 2)))) break;
         if ((opening || (inParen && !(sep === "," && hasVerse))) && r.b === null) break;  // "(2 times)" isn't a reference
         if (opening) inParen = true;
         let rc, rv;

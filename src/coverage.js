@@ -166,7 +166,11 @@ function alsoCited(index, focus, opts = {}) {
   return cache.results.get(key);
 }
 
-function findAlsoCited(index, focus, { broadChapters = 2, skip = null, isHub = null } = {}) {
+// Which references count (0.4.0, as in the verse star): all of a topic note's (isTopic), and all
+// of a note on the focus chapter (its main passage is in it); any other note's only those in the
+// same paragraph as its citation of the focus or under a verse heading on it, plus its own main
+// passage. A long note on another passage that mentions the focus once isn't about it.
+function findAlsoCited(index, focus, { broadChapters = 2, skip = null, isHub = null, isTopic = null } = {}) {
   const narrow = (r) => r.c2 - r.c1 + 1 <= broadChapters;
   const onFocus = (r) => {
     if (r.book !== focus.book || r.c1 > focus.c || r.c2 < focus.c || !narrow(r)) return false;
@@ -184,7 +188,17 @@ function findAlsoCited(index, focus, { broadChapters = 2, skip = null, isHub = n
     if (!e || !e.refs.some(onFocus) || isHub?.(path)) continue;
     total++;
     // Reading order, with the filename's main passage (line -1) last.
-    const refs = [...e.refs].sort((a, b) => ((a.line < 0) - (b.line < 0)) || (a.line - b.line) || ((a.col ?? 0) - (b.col ?? 0)));
+    const all = [...e.refs].sort((a, b) => ((a.line < 0) - (b.line < 0)) || (a.line - b.line) || ((a.col ?? 0) - (b.col ?? 0)));
+    const onFocusChapter = (m) => m.book === focus.book && m.c1 <= focus.c && focus.c <= m.c2 && narrow(m);
+    let refs = all;
+    if (!isTopic?.(path) && !(e.main || []).some(onFocusChapter)) {
+      const paras = new Set(all.filter((r) => r.line >= 0 && onFocus(r)).map((r) => r.para));
+      const near = all.filter((r) => r.line >= 0 && (paras.has(r.para) || (r.sec && onFocus(r.sec))));
+      const rk = (r) => `${r.book}:${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
+      const mains = (e.main || []).filter((m) => !near.some((r) => r.book === m.book && r.c1 <= m.c2 && m.c1 <= r.c2))
+        .map((m) => all.find((r) => rk(r) === rk(m)) || { ...m, line: -1, text: "", lineText: "" });
+      refs = [...near, ...mains];
+    }
     for (const r of refs) {
       if (!narrow(r)) continue;
       for (let c = r.c1; c <= r.c2; c++) {
@@ -212,8 +226,11 @@ function findAlsoCited(index, focus, { broadChapters = 2, skip = null, isHub = n
 // focus = { book, c1, v1, c2, v2 } (a verse or a verse range). Like alsoCited, at verse level:
 // - A note is "on" the focus if a narrow verse reference of it overlaps the focus. Chapter-only
 //   and broad references (more than broadChapters chapters) don't count, either way.
-// - Its other narrow verse references become dots, except those touching the focus chapter(s)
-//   (the verse grid above already shows them).
+// - What it links to the focus become dots: everything it cites if it is a topic note
+//   (isTopic) or a short note about the focus (SHORT_NOTE verses or fewer); otherwise only what it cites in the same paragraph
+//   as the focus or under a verse heading on it ("### 3:5 …"), plus its own main passage (user, 2026-11-20: a long note on several verses
+//   discusses many things, and the rest of it isn't a link). Narrow verse references only,
+//   and not those touching the focus chapter(s) (the verse grid above already shows them).
 // - Overlapping references in a book merge into one dot (Zech 12:10 and Zech 12:10–13:1);
 //   the dot is labelled with the form most notes cite (then the narrowest, then the first).
 // - skip: a path left out (the rabbit-trails note). isHub(path): notes left out because they
@@ -235,8 +252,19 @@ function verseStar(index, focus, opts = {}) {
 
 const vlo = (r) => r.c1 * 1000 + (r.v1 ?? 0);
 const vhi = (r) => r.c2 * 1000 + (r.v2 ?? 999);
+const SHORT_NOTE = 2; // a note about at most this many verses links everything it cites
 
-function findVerseStar(index, focus, { broadChapters = 2, skip = null, isHub = null } = {}) {
+// A dot's label. The form most notes cite wins. On a tie (bug 20: 2:8–11, 2:10 and 2:11 one
+// note each gave "2:10", a verse no note linked), the main passage of a note that is about it;
+// otherwise the narrowest, then the earliest.
+function dotLabel(forms) {
+  const width = (r) => vhi(r) - vlo(r);
+  forms.sort((a, b) => (b.paths.size - a.paths.size) || (width(a.r) - width(b.r)) || (vlo(a.r) - vlo(b.r)));
+  const about = forms.find((f) => f.main && f.paths.size === forms[0].paths.size);
+  return (about || forms[0]).r;
+}
+
+function findVerseStar(index, focus, { broadChapters = 2, skip = null, isHub = null, isTopic = null } = {}) {
   const usable = (r) => r.v1 != null && r.c2 - r.c1 + 1 <= broadChapters;
   const onFocus = (r) => usable(r) && r.book === focus.book && vlo(r) <= vhi(focus) && vlo(focus) <= vhi(r);
   const inFocusChapters = (r) => r.book === focus.book && r.c1 <= focus.c2 && focus.c1 <= r.c2;
@@ -251,7 +279,28 @@ function findVerseStar(index, focus, { broadChapters = 2, skip = null, isHub = n
     // Reading order, with the filename's main passage (line -1) last, so a note's first
     // citation of a dot is the one in its text.
     const refs = [...e.refs].sort((a, b) => ((a.line < 0) - (b.line < 0)) || (a.line - b.line) || ((a.col ?? 0) - (b.col ?? 0)));
-    for (const r of refs) if (usable(r) && !inFocusChapters(r)) cited.push({ path, r });
+    const rk = (r) => `${r.book}:${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
+    const mainKeys = new Set((e.main || []).map(rk));
+    const isMain = (r) => r.line < 0 || mainKeys.has(rk(r));
+    const take = (r) => cited.push({ path, r, main: isMain(r) });
+    // A topic note (one subject throughout), or a short note about the focus (1–2 verses):
+    // everything in it is linked.
+    if (isTopic?.(path) || (e.main || []).some((m) => onFocus(m) && m.c1 === m.c2 && m.v2 - m.v1 < SHORT_NOTE)) {
+      for (const r of refs) if (usable(r) && !inFocusChapters(r)) take(r);
+      continue;
+    }
+    // Any other note: only what it cites in the same paragraph as the focus, plus its own
+    // passage (unless something cited there already falls inside it, e.g. Rev 2:8 in a note on
+    // Rev 2:8–11). A long note discusses many things; the rest of it isn't a link.
+    // "Near": the same paragraph, or the section under a verse heading on the focus ("### 3:5 …").
+    const paras = new Set(refs.filter((r) => r.line >= 0 && onFocus(r)).map((r) => r.para));
+    const near = refs.filter((r) => r.line >= 0 && (paras.has(r.para) || (r.sec && onFocus(r.sec))) &&
+      usable(r) && !inFocusChapters(r));
+    for (const r of near) take(r);
+    for (const m of e.main || []) {
+      if (!usable(m) || inFocusChapters(m) || near.some((r) => r.book === m.book && vlo(r) <= vhi(m) && vlo(m) <= vhi(r))) continue;
+      take(refs.find((r) => rk(r) === rk(m)) || { ...m, line: -1, text: "", lineText: "" });
+    }
   }
   // Merge overlapping references book by book: sort by start, extend while they overlap.
   cited.sort((a, b) => (a.r.book - b.r.book) || (vlo(a.r) - vlo(b.r)) || (vhi(a.r) - vhi(b.r)));
@@ -264,16 +313,16 @@ function findVerseStar(index, focus, { broadChapters = 2, skip = null, isHub = n
   const name = (p) => p.split("/").pop();
   const dots = clusters.map((cl) => {
     const notes = new Map(), forms = new Map();
-    for (const { path, r } of cl.items) {
+    for (const { path, r, main } of cl.items) {
       const fk = `${r.c1}:${r.v1}:${r.c2}:${r.v2}`;
-      if (!forms.has(fk)) forms.set(fk, { r, paths: new Set() });
+      if (!forms.has(fk)) forms.set(fk, { r, paths: new Set(), main: false });
       forms.get(fk).paths.add(path);
+      if (main) forms.get(fk).main = true;
       let n = notes.get(path);
       if (!n) notes.set(path, (n = { path, line: r.line, col: r.col ?? 0, refText: r.text, lineText: r.lineText, lineCol: r.lineCol, ranges: new Map() }));
       if (!n.ranges.has(fk)) n.ranges.set(fk, r);
     }
-    const best = [...forms.values()].sort((a, b) => (b.paths.size - a.paths.size) ||
-      ((vhi(a.r) - vlo(a.r)) - (vhi(b.r) - vlo(b.r))) || (vlo(a.r) - vlo(b.r)))[0].r;
+    const best = dotLabel([...forms.values()]);
     const ref = { book: best.book, bookName: best.bookName, c1: best.c1, v1: best.v1, c2: best.c2, v2: best.v2 };
     return {
       key: `${ref.book}:${ref.c1}:${ref.v1}:${ref.c2}:${ref.v2}`, book: cl.book, ref, forms: forms.size,
