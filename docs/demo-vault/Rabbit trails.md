@@ -1,0 +1,2 @@
+- Revelation 14:14 — another “One like the Son of Man”, on a white cloud (from [[Daniel 7v13-14]], 2026-11-20)
+- Isaiah 43:10 — “I am He” again; does it belong with the first-and-last sayings? (from [[Isaiah 41v4]], 2026-11-20)

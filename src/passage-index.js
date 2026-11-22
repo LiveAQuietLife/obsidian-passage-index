@@ -10,13 +10,36 @@ const sameRange = (a, b) => a.book === b.book && lo(a) === lo(b) && hi(a) === hi
 const overlaps = (a, b) => a.book === b.book && lo(a) <= hi(b) && lo(b) <= hi(a);
 
 // How a found reference relates to the group's passage. Lower rank = shown first.
+// "exact" was shown as "exact" until 0.4.0, which read as "quotes it exactly"; the label now
+// says what is the same (see matchLabel).
 const MATCH = {
-  exact:    { rank: 0, label: "exact" },
+  exact:    { rank: 0, label: "same passage" },
   within:   { rank: 1, label: "inside" },        // e.g. 11:17 inside 11:15–19
   contains: { rank: 2, label: "contains" },      // e.g. 11:12–25 contains 11:17
   overlap:  { rank: 3, label: "overlaps" },
   chapter:  { rank: 4, label: "chapter" },       // chapter-only reference ("Mark 11")
 };
+
+// The tag for a note under a passage group: "same verse" / "same passage" / "same chapter" for
+// an exact match (so it isn't taken for an exact quotation), the MATCH label otherwise.
+function matchLabel(mt, group) {
+  if (mt !== "exact") return MATCH[mt].label;
+  if (group.v1 === null) return "same chapter";
+  return group.c1 === group.c2 && group.v1 === group.v2 ? "same verse" : "same passage";
+}
+
+// The tag's tooltip, as a sentence: what the note cites, and how it fits the group's passage.
+// cited: the note's reference (the one the tag is about).
+function matchTip(mt, group, cited) {
+  const g = format(group), c = format(cited);
+  switch (mt) {
+    case "exact": return `Cites ${g} itself`;
+    case "within": return `Cites ${c}, part of ${g}`;
+    case "contains": return `Cites ${c}, which includes ${g}`;
+    case "overlap": return `Cites ${c}, which overlaps ${g}`;
+    default: return `Mentions only the chapter (${c}), not the verses`;
+  }
+}
 
 function matchType(group, ref) {
   if (sameRange(group, ref)) return "exact";
@@ -45,6 +68,46 @@ const plainLinks = (s) => s.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2").replac
 // text can appear earlier, e.g. in a masked link target (bug 3).
 // "(quoted by; …)", "(alluded to by)", "(echoed by)" -> reverse: the listed text uses this
 // note's passage, so the line belongs under Used by rather than Uses.
+// Paragraph number of each line: lines with no blank line between them share one (a list, a
+// quote, a callout); a heading is a paragraph of its own; the frontmatter is paragraph 0.
+function paragraphs(lines, bodyStart) {
+  const out = new Array(lines.length).fill(0);
+  let id = 1, open = false;
+  for (let i = bodyStart; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) { if (open) id++; open = false; out[i] = -1; continue; }
+    if (/^#{1,6}\s/.test(t)) { if (open) id++; out[i] = id++; open = false; continue; }
+    out[i] = id; open = true;
+  }
+  return out;
+}
+
+// Verse headings: a heading that starts with a verse ("### 3:5 'the book of life'", "#### 1:14-15 …",
+// in the note's main book) or with a full reference ("### Rev 3:5", "## Revelation 3:5–6", any
+// note). Each line gets the verse of the innermost such heading above it (a sub-heading without
+// a verse keeps its parent's). null where there is none. parse: the reader's parse.
+function verseSections(lines, bodyStart, book, parse) {
+  const out = new Array(lines.length).fill(null);
+  const stack = [];
+  for (let i = bodyStart; i < lines.length; i++) {
+    const h = /^(#{1,6})\s+(.*)$/.exec(lines[i].trim());
+    if (h) {
+      const level = h[1].length;
+      while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+      let ref = null;
+      const v = book && /^(\d+)[:.](\d+)(?:\s*[-–]\s*(\d+))?(?!\d)/.exec(h[2]);
+      if (v) ref = { book, c1: +v[1], v1: +v[2], c2: +v[1], v2: +(v[3] || v[2]) };
+      else if (parse && /^[1-4IV]*\s*[A-Za-z]/.test(h[2])) {
+        const r = parse(h[2])[0];
+        if (r && r.v1 != null && h[2].startsWith(r.text)) ref = { book: r.book, c1: r.c1, v1: r.v1, c2: r.c2, v2: r.v2 };
+      }
+      stack.push({ level, ref });
+    }
+    for (let j = stack.length - 1; j >= 0; j--) if (stack[j].ref) { out[i] = stack[j].ref; break; }
+  }
+  return out;
+}
+
 function readLine(lineText, ref) {
   const at = ref.col >= 0 && lineText.startsWith(ref.text, ref.col) ? ref.col : lineText.indexOf(ref.text);
   const after = lineText.slice(at + ref.text.length);
@@ -178,15 +241,22 @@ class PassageIndex {
       lineText: (lines[r.line] || "").trim().slice(0, 2000),
     }));
     // Where the reference sits in the trimmed line, so the pane can centre its preview on it.
+    // para: its paragraph (the verse star links only what a long note cites together).
+    const para = paragraphs(lines, fm ? fm[0].split("\n").length : 0);
     for (const r of bodyRefs) {
       const raw = lines[r.line] || "";
       r.lineCol = r.col - (raw.length - raw.trimStart().length);
+      r.para = para[r.line];
     }
     let main = [];
     const ov = override == null ? [] : (Array.isArray(override) ? override : [override]);
     for (const o of ov) main.push(...this.reader.parse(String(o)));
     if (!main.length) main = this.reader.parseName(this.maskPhrases(basename));
     main = main.map((r) => ({ book: r.book, bookName: r.bookName, c1: r.c1, v1: r.v1, c2: r.c2, v2: r.v2 }));
+    // sec: the verse heading above each reference (the verse star treats that section as
+    // about that verse).
+    const sec = verseSections(lines, fm ? fm[0].split("\n").length : 0, main[0]?.book, (s) => this.reader.parse(s));
+    for (const r of bodyRefs) r.sec = sec[r.line];
 
     // The main passage also counts as a reference of the note (for notes that never
     // repeat their own passage in the body).
@@ -284,7 +354,7 @@ class PassageIndex {
       // Broad: even the best match spans many chapters ("Mark 1–8"). The pane can hide these.
       const broad = best.mt !== "exact" && best.r.c2 - best.r.c1 + 1 > (this.opts.broadChapters || 2);
       notes.push({
-        path: other, about, broad, match: best.mt, matchLabel: MATCH[best.mt].label,
+        path: other, about, broad, match: best.mt, matchLabel: matchLabel(best.mt, ref), matchTip: matchTip(best.mt, ref, best.r),
         line: best.r.line, col: best.r.col ?? 0, lineText: best.r.lineText, lineCol: best.r.lineCol,
         chapterOnly: best.mt === "chapter", refText: best.r.text, more: count - 1,
       });
@@ -400,6 +470,14 @@ class PassageIndex {
       .sort((a, b) => (b.notes.length - a.notes.length) || (a.ref.book - b.ref.book) || (lo(a.ref) - lo(b.ref)) || (hi(a.ref) - hi(b.ref)));
   }
 
+  // The note's main passage(s) as labels, in Bible order (the pane header). Same labels as
+  // groupsFor's main groups, without working out the groups.
+  mainLabels(path) {
+    const main = [...(this.files.get(path)?.main || [])]
+      .sort((a, b) => (a.book - b.book) || (lo(a) - lo(b)) || (hi(a) - hi(b)));
+    return [...new Set(main.map(format))];
+  }
+
   // Groups for the pane (design: Option C).
   // Returns [{ key, label, ref, isMain, open, notes: [{ path, about, match, matchLabel,
   //            line, lineText, refText, more, otherGroups }] }]
@@ -492,6 +570,42 @@ class PassageIndex {
     return { uses, usedBy, open };
   }
 
+  // Possible intertexts: verses the note cites that aren't recorded as intertexts yet, so the
+  // pane can offer them (Add …). Only for notes with a main passage. Left out: chapter-only
+  // references, the note's own book (cross-references within a book, e.g. Rev 3:5 → Rev 20:12),
+  // anything inside the main passage, and anything overlapping a link already recorded at
+  // either end (its = intertextsFor(path), if the caller has it).
+  // Overlapping citations are merged into one suggestion covering both (Matt 24:42–44 and
+  // 24:43–44 → Matt 24:42–44; 24:42–43 and 24:43–44 → 24:42–44), their counts added.
+  // Returns [{ ref, passage, count }]: books before the main passage's first (an earlier text
+  // is usually the one used), then later ones; within each, most-cited first, then Bible order.
+  intertextCandidates(path, its = this.intertextsFor(path)) {
+    const e = this.files.get(path);
+    if (!e || !e.main.length) return [];
+    const taken = [...its.uses, ...its.usedBy].map((r) => r.ref).filter(Boolean)
+      .concat(e.intertexts.map((it) => it.target));
+    const mainBooks = new Set(e.main.map((m) => m.book));
+    const canon = (a, b) => (a.book - b.book) || (lo(a) - lo(b)) || (hi(a) - hi(b));
+    const cited = e.refs
+      .filter((r) => r.line >= 0 && r.v1 !== null && !mainBooks.has(r.book))
+      .filter((r) => !e.main.some((m) => overlaps(m, r)) && !taken.some((t) => overlaps(t, r)))
+      .sort(canon);
+    // In Bible order, each citation either widens the previous suggestion (overlap) or starts one.
+    const out = [];
+    for (const r of cited) {
+      const last = out[out.length - 1];
+      if (last && overlaps(last.ref, r)) {
+        if (hi(r) > hi(last.ref)) { last.ref.c2 = r.c2; last.ref.v2 = r.v2; }
+        last.count++;
+        continue;
+      }
+      out.push({ ref: { book: r.book, bookName: r.bookName, c1: r.c1, v1: r.v1, c2: r.c2, v2: r.v2 }, count: 1 });
+    }
+    for (const c of out) c.passage = format(c.ref);
+    const first = Math.min(...e.main.map((m) => m.book));
+    return out.sort((a, b) => ((a.ref.book > first) - (b.ref.book > first)) || (b.count - a.count) || canon(a.ref, b.ref));
+  }
+
   // The lines at the other end of the same link (for Remove): row is an intertext line in
   // the note at row.path. A partner is a line in a note whose main passage overlaps row's
   // target, pointing back into row's note's main passage, written the other way round
@@ -513,9 +627,10 @@ class PassageIndex {
   // cites, each listed once with the passages it shares ("via"). isTopic(path) decides
   // what counts as a topic (the plugin reads frontmatter/folders), so this module stays
   // Obsidian-free. Filtering of broad/chapter-only matches is left to the caller.
-  topicsFor(path, isTopic) {
+  // groups: groupsFor(path) if the caller already has it (bug 8).
+  topicsFor(path, isTopic, groups = this.groupsFor(path)) {
     const topics = new Map();
-    for (const g of this.groupsFor(path)) {
+    for (const g of groups) {
       for (const n of g.notes) {
         if (!isTopic(n.path)) continue;
         if (!topics.has(n.path)) topics.set(n.path, { path: n.path, via: [] });

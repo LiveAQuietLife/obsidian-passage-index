@@ -84,6 +84,8 @@ function createReader(books = BOOKS) {
   // Chapter/verse separator: "13:14", "13: 14", "13.14", "13v14", and European "5,1" (no space).
   const reSep = /(?:[.v,]|:[ \u00a0]?)(?=\d)/y;
   const reSuffix = /(?:ff?|[a-d])(?![\p{L}])/uy; // 14a, 14b, 22f, 22ff
+  // A part-letter range in one verse: the "–b" of "3:4a–b".
+  const rePartEnd = new RegExp(`${SP}*[-\\u2010-\\u2013\\u2212]${SP}*[a-d](?![\\p{L}\\d])`, "uy");
   // Range dash. Spaces are allowed around - and –, but a spaced em dash ("35 — 8") is punctuation.
   const reDash = new RegExp(`(?:${SP}*[-\\u2010-\\u2013\\u2212]${SP}*|\\u2014|\\u2015)(?=\\d)`, "y");
   // "and" / "&" also chain ("Isa 41:4, 44:6 and 48:12"), but only to a full chapter:verse item,
@@ -96,6 +98,11 @@ function createReader(books = BOOKS) {
   const reOpen = new RegExp(`${SP}*\\(${SP}*()${FILL}(?=\\d)`, "iy");
   const reListP = new RegExp(`(?:${SP}*([,;])${SP}*|${AND}())${FILL}(?=\\d)`, "iy");
 
+  // After a bare number in a list: " Clem 3", " Apol. 61" (an unknown book and its chapter).
+  const UNKNOWN_BOOK = new RegExp(`^${SP}+\\p{Lu}\\p{L}*\\.?${SP}*\\d`, "u");
+  // After a bare number: a space and a word ("2 others").
+  const WORD_AFTER = new RegExp(`^${SP}\\p{L}`, "u");
+
   function at(re, text, pos) {
     re.lastIndex = pos;
     const m = re.exec(text);
@@ -103,7 +110,8 @@ function createReader(books = BOOKS) {
   }
 
   // Read "N" or "N<sep>M" at pos. Returns { a, b, end } (b null if no sep).
-  function readCV(text, pos) {
+  // verse: a bare N is a verse (the end of "3:4-5a"), so a part letter may follow it too.
+  function readCV(text, pos, verse = false) {
     const n1 = at(reNum, text, pos);
     if (!n1) return null;
     let a = +n1.m[1], b = null, end = n1.end;
@@ -112,7 +120,7 @@ function createReader(books = BOOKS) {
       const n2 = at(reNum, text, s.end);
       if (n2) { b = +n2.m[1]; end = n2.end; }
     }
-    if (b !== null) { const suf = at(reSuffix, text, end); if (suf) end = suf.end; }
+    if (b !== null || verse) { const suf = at(reSuffix, text, end); if (suf) end = suf.end; }
     if (/\p{L}/u.test(text[end] || "")) return null; // "11Q19", "4QpIsa" — not a reference
     return { a, b, end };
   }
@@ -133,9 +141,9 @@ function createReader(books = BOOKS) {
       if (/:\/\/|[=?&]/.test(text.slice(tokStart, m.index))) continue;
 
       let pos = bookRe.lastIndex;
-      const first = readCV(text, pos);
-      if (!first) continue;
       const single = SINGLE_CHAPTER.has(info.id);
+      const first = readCV(text, pos, single);   // "Jude 5a": a bare number is a verse
+      if (!first) continue;
       if (single && first.b === null) { first.b = first.a; first.a = 1; }
       if (first.a < 1 || first.a > MAX_CH) continue;
       if (info.verseOnly && first.b === null) continue;
@@ -153,7 +161,7 @@ function createReader(books = BOOKS) {
       // A dash before a numbered book is punctuation, not a range: "Isa 53:7 - 1 Pet 2:22".
       const d = at(reDash, text, end);
       if (d && !startsBook(text, d.end)) {
-        const r = readCV(text, d.end);
+        const r = readCV(text, d.end, v !== null || single);
         if (r) {
           if (single && r.b === null) { v2 = r.a; }                // Jude 5–7
           else if (v === null) { c2 = r.a; v2 = r.b; }              // 13–14, 13–14:2
@@ -162,6 +170,7 @@ function createReader(books = BOOKS) {
           end = r.end;
         }
       }
+      else if (/[a-d]/.test(text[end - 1] || "")) { const pl = at(rePartEnd, text, end); if (pl) end = pl.end; } // 3:4a–b
       if (c2 < c || (c2 === c && v !== null && v2 !== null && v2 < v)) { c2 = c; v2 = v; }
       if (!push(c, v, c2, v2, refStart, end)) continue;
       let curC = c2, hasVerse = v !== null, inParen = false;
@@ -175,9 +184,14 @@ function createReader(books = BOOKS) {
         const isAnd = l.m[1] === undefined && l.m[2] === "";
         const sep = isAnd ? "and" : l.m[1];
         if (startsBook(text, l.end)) break;                         // "; 1 Cor 1:22" — a new book
-        const r = readCV(text, l.end);
+        const r = readCV(text, l.end, single || (sep === "," && hasVerse));   // "Rev 3:4, 6a"
         if (!r) break;
-        if (isAnd && r.b === null && !single) break;                // "and 2 others" isn't a reference
+        // "; 2 Clem 3:2": a book PI doesn't know (a capitalised word, then a chapter) starts here,
+        // so the number is part of its name, not the next item of this list (bug 18).
+        if (r.b === null && UNKNOWN_BOOK.test(text.slice(r.end, r.end + 40))) break;
+        // After "and", a bare number is a chapter only in a list of chapters ("Isaiah 41, 44 and
+        // 48", bug 19), and not when a word follows it ("Rev 1 and 2 others").
+        if (isAnd && r.b === null && !single && (hasVerse || WORD_AFTER.test(text.slice(r.end, r.end + 2)))) break;
         if ((opening || (inParen && !(sep === "," && hasVerse))) && r.b === null) break;  // "(2 times)" isn't a reference
         if (opening) inParen = true;
         let rc, rv;
@@ -189,7 +203,7 @@ function createReader(books = BOOKS) {
         let rc2 = rc, rv2 = rv, rend = r.end;
         const d2 = at(reDash, text, rend);
         if (d2 && !startsBook(text, d2.end)) {
-          const r2 = readCV(text, d2.end);
+          const r2 = readCV(text, d2.end, rv !== null || single);
           if (r2) {
             if (rv === null) { rc2 = r2.a; rv2 = r2.b; }
             else if (r2.b === null) { rv2 = r2.a; }
